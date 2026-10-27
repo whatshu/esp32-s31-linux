@@ -9,3 +9,4 @@ local-overlay/*
 !local-overlay/.empty
 release/
 .vscode/
+vendor/
