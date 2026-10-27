@@ -1,0 +1,4 @@
+# ESP-Mosaico CoreBoard V1.2. Flash root and CST9220 touch; CO5300 support is in progress.
+BR2_ROOTFS_OVERLAY="$(BR2_EXTERNAL_ESP32S31_PATH)/board/esp32s31/rootfs-overlay $(BR2_EXTERNAL_ESP32S31_PATH)/board/esp32s31/rootfs-overlay-flashroot $(BR2_EXTERNAL_ESP32S31_PATH)/board/esp32s31/rootfs-overlay-esp-mosaico $(BR2_EXTERNAL_ESP32S31_PATH)/../local-overlay"
+BR2_LINUX_KERNEL_CONFIG_FRAGMENT_FILES="$(BR2_EXTERNAL_ESP32S31_PATH)/board/esp32s31/linux-esp-mosaico.fragment"
+BR2_PACKAGE_EVTEST=y

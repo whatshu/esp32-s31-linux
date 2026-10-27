@@ -18,14 +18,20 @@ changes of each release.
 
 ## Quick start
 
-There are three builds. The ESP32-S31-WROOM-3-N16R16V module is the module
-of the two boards.
+There are four board configurations:
 
 | Board | Build | Root | Release files |
 | --- | --- | --- | --- |
 | ESP32-S31-WROOM-3-N16R16V module alone, on any board with UART0 | `esp32s31` (the default) | flash | `*-esp32s31-flash.zip` |
 | ESP32-S31-Function-CoreBoard-1 | `coreboard1` | USB stick | `*-coreboard1-flash.zip`, `*-coreboard1-usb.img.xz` |
 | ESP32-S31-Korvo-1 | `korvo1` | microSD card | `*-korvo1-flash.zip`, `*-korvo1-sdcard.img.xz` |
+| ESP-Mosaico CoreBoard V1.2 | `esp-mosaico` | flash | In development |
+
+ESP-Mosaico support targets CoreBoard V1.2. UART and Wi-Fi have been tested
+with the supplied `esp32s31` firmware. The new CST9220 touch driver, SPI
+controller and board device tree pass compilation; hardware validation is
+pending. The CO5300 display driver and a complete local firmware are still
+in progress.
 
 1. Get the files of your board from the newest
    [release](https://github.com/annoyedmilk/esp32-s31-linux/releases).
@@ -38,7 +44,8 @@ of the two boards.
 5. Write the disk image, for example with balenaEtcher. All data on the
    disk is lost. Korvo-1: write `*-korvo1-sdcard.img.xz` to a microSD card.
    Function-CoreBoard-1: write `*-coreboard1-usb.img.xz` to a USB stick.
-   Put the disk into the board. The module alone needs no disk.
+   Put the disk into the board. The module-alone and ESP-Mosaico builds
+   use a rootfs in flash and need no disk.
 6. Open a terminal on the same port at 115200 baud. Push reset. When the
    console shows `=== ESP32-S31 Linux / Buildroot ===`, you are root.
 
@@ -77,6 +84,8 @@ on your computer. For your own builds, put the key into
 `local-overlay/root/.ssh/authorized_keys`.
 
 ## What works
+
+The table lists the validated builds. ESP-Mosaico validation is pending.
 
 | | `esp32s31` | `coreboard1` | `korvo1` |
 | --- | --- | --- | --- |
@@ -168,10 +177,11 @@ A chain of dependent loads takes 17 ns for each load from the D-cache, and
 | Build | Packages |
 | --- | --- |
 | All boards | BusyBox, Dropbear, OpenSSL with the CA bundle, `wpa_supplicant` (WPA3, EAP, access point) with `wpa_cli` and `wpa_passphrase`, `iw`, `curl`, `iperf3`, the libgpiod 2 tools, BlueZ (`bluetoothd`, `bluetoothctl`), Lua |
-| `esp32s31` also | The MTD tools (`mtdinfo`, `flash_erase`) |
+| `esp32s31` and `esp-mosaico` also | The MTD tools (`mtdinfo`, `flash_erase`) |
 | `coreboard1` and `korvo1` also | `hostapd`, the classic BlueZ tools (`hciconfig`, `hcitool`), bash, coreutils, vim, nano, less, file, htop, fastfetch, strace, gdb and `gdbserver`, tcpdump, links, MicroPython, tmux, nnn, ncdu, tree, bc, sqlite3, e2fsprogs, dosfstools, an SFTP server |
 | `coreboard1` also | `ethtool` |
 | `korvo1` also | `gpm`, `lynx`, `irssi`, `evtest` |
+| `esp-mosaico` also | `evtest` |
 
 `/etc/motd` lists the first commands. `/usr/share/examples` has example
 scripts.
@@ -209,7 +219,8 @@ scripts.
   `/tmp/autostart.log`. `/usr/share/examples/autostart.sh` is a template.
   `scp file root@<address>:/mnt/sd/` puts a file on p1.
 - **Touch** (Korvo-1). `/usr/share/examples/touch.sh` prints the touches on
-  the LCD with `evtest`.
+  the LCD with `evtest`. On ESP-Mosaico, run `evtest` and select
+  `CST9220 Touchscreen` to validate the polled touch input.
 - **Desktop** (Korvo-1). In tmux on the LCD: `Ctrl-b c` opens a window,
   `Ctrl-b n` goes to the next, `Ctrl-b %` and `Ctrl-b "` split, `Ctrl-b d`
   logs out.
@@ -230,9 +241,9 @@ your board.
 The host is macOS. The build needs:
 
 - Homebrew and GNU make (`brew install make`).
-- ESP-IDF at `~/esp/esp-idf`, at the commit in `bootloader/esp-idf.version`,
-  with the `riscv32-esp-elf` toolchain, the ESP-Hosted patches and the
-  backports (`make bootloader` gives the command).
+- ESP-IDF sources in the `external/esp-idf` submodule, pinned to the commit
+  in `bootloader/esp-idf.version`, with the ESP-Hosted patches and backports.
+  Use EIM to activate the installed `v6.1` compiler, Python and host tools.
 - esptool at the version in `bootloader/esptool.version`, in the Python
   environment of ESP-IDF (`make check` gives the command).
 - The Apple `container` CLI. Buildroot does not run on macOS: it runs in the
@@ -243,6 +254,9 @@ On Linux, `scripts/ci-build.sh` builds everything without a container.
 
 ```sh
 git submodule update --init --recursive
+export IDF_PATH="$PWD/external/esp-idf"
+export PYTHON="$IDF_PYTHON_ENV_PATH/bin/python"
+scripts/patch-esp-idf.sh
 make container-image
 make check
 make ports
@@ -251,8 +265,15 @@ make flash   BOARD=korvo1 FLASH_PORT=/dev/cu.usbserial-XXXX
 make monitor BOARD=korvo1 SERIAL_PORT=/dev/cu.usbserial-XXXX
 ```
 
+`scripts/patch-esp-idf.sh` modifies the ESP-IDF source and creates a local
+patch commit. Use the dedicated submodule checkout so these changes stay
+separate from the system or EIM-managed SDK. Keep the submodule pinned to
+the upstream commit when committing project changes. Reference checkouts
+belong in the ignored `vendor/` directory; `external/` contains dependency
+submodules only.
+
 - `BOARD` selects the build for each target: `esp32s31` (the default),
-  `coreboard1` or `korvo1`. The output goes to `build/<board>/`.
+  `coreboard1`, `korvo1` or `esp-mosaico`. The output goes to `build/<board>/`.
 - `make build` builds the loader and OpenSBI on the Mac, and the kernel, the
   rootfs and the disk images in the container.
 - `make monitor` resets the board, waits for the banner, then stays open as

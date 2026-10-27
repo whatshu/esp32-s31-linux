@@ -1,0 +1,78 @@
+// SPDX-License-Identifier: GPL-2.0+
+/*
+ * ESP-Mosaico CoreBoard V1.2 (16 MiB flash, 16 MiB PSRAM).
+ * The root filesystem is in flash. The shared I2C bus carries the touch
+ * controller and sensors; the CO5300 display uses a separate QSPI bus.
+ */
+/dts-v1/;
+#include "esp32s31.dtsi"
+#include <dt-bindings/gpio/gpio.h>
+
+/ {
+	model = "ESP-Mosaico CoreBoard V1.2";
+	compatible = "esp-mosaico,coreboard-v1.2", "esp,esp32s31";
+
+	/* GPIO60 low enables the shared peripheral power rail. */
+	vcc_3v3: regulator-vcc-3v3 {
+		compatible = "regulator-fixed";
+		regulator-name = "vcc-3v3";
+		regulator-min-microvolt = <3300000>;
+		regulator-max-microvolt = <3300000>;
+		gpio = <&pinctrl 60 GPIO_ACTIVE_LOW>;
+		regulator-always-on;
+		startup-delay-us = <100000>;
+	};
+
+	chosen {
+		stdout-path = "serial0:115200n8";
+	};
+};
+
+/* The rootfs and data partitions of partitions-esp-mosaico.csv. */
+&wifi {
+	flash {
+		partitions {
+			compatible = "fixed-partitions";
+			#address-cells = <1>;
+			#size-cells = <1>;
+
+			partition@0 {
+				label = "rootfs";
+				reg = <0x0 0x780000>;
+				read-only;
+			};
+
+			partition@780000 {
+				label = "data";
+				reg = <0x780000 0x270000>;
+			};
+		};
+	};
+};
+
+&pinctrl {
+	i2c0_cfg: i2c0-cfg {
+		i2c0-pins {
+			pinmux = <ESP32S31_MATRIX_INOUT(56, ESP32S31_SIG_I2C0_SDA)>,
+				 <ESP32S31_MATRIX_INOUT(3, ESP32S31_SIG_I2C0_SCL)>;
+			bias-pull-up;
+			drive-open-drain;
+		};
+	};
+};
+
+/* GPIO6 is the touch interrupt; poll until the GPIO controller supports IRQs. */
+&i2c0 {
+	pinctrl-names = "default";
+	pinctrl-0 = <&i2c0_cfg>;
+	clock-frequency = <400000>;
+	status = "okay";
+
+	touchscreen@5a {
+		compatible = "hynitron,cst9220";
+		reg = <0x5a>;
+		vdd-supply = <&vcc_3v3>;
+		touchscreen-size-x = <480>;
+		touchscreen-size-y = <480>;
+	};
+};

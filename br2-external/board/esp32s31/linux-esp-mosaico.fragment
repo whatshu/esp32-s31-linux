@@ -1,0 +1,50 @@
+# ESP-Mosaico CoreBoard V1.2: flash root and CST9220 touch.
+# Merged into linux.config for esp-mosaico_defconfig.
+CONFIG_BUILTIN_DTB_NAME="espressif/esp32s31_esp_mosaico"
+# The UART is the only console.  The root is the squashfs partition of the
+# flash window.  overlay-init puts the data partition over it.
+CONFIG_CMDLINE="earlycon=sbi console=ttyS0,115200 esp32_shm.radio_service=bt root=/dev/mtdblock0 rootfstype=squashfs ro rootwait init=/sbin/overlay-init"
+
+# The QSPI display driver is added separately; keep input for touch.
+# CONFIG_FB is not set
+# CONFIG_VT is not set
+CONFIG_INPUT=y
+CONFIG_INPUT_EVDEV=y
+CONFIG_INPUT_TOUCHSCREEN=y
+CONFIG_TOUCHSCREEN_HYNITRON_CST9220=y
+# CONFIG_TOUCHSCREEN_GOODIX is not set
+# CONFIG_HID is not set
+
+# No card, USB host or LED. The shared I2C bus carries the touch controller.
+# CONFIG_MMC is not set
+CONFIG_I2C=y
+CONFIG_I2C_CHARDEV=y
+CONFIG_REGULATOR=y
+CONFIG_REGULATOR_FIXED_VOLTAGE=y
+# CONFIG_USB_SUPPORT is not set
+# CONFIG_PHY_ESP32S31_USB is not set
+# CONFIG_SCSI is not set
+# CONFIG_NEW_LEDS is not set
+# CONFIG_EXT4_FS is not set
+# CONFIG_VFAT_FS is not set
+# CONFIG_UEVENT_HELPER is not set
+
+# The flash window of the firmware: a read-only squashfs root, and UBIFS on
+# the data partition as the writable overlay over it.  jffs2 cannot be the
+# upper layer: it has no RENAME_WHITEOUT, so overlayfs cannot make a
+# directory where a lower one was deleted.
+CONFIG_MTD=y
+CONFIG_MTD_BLOCK=y
+CONFIG_MTD_UBI=y
+# squashfs and UBIFS are in this menu, which linux.config turns off.
+CONFIG_MISC_FILESYSTEMS=y
+CONFIG_SQUASHFS=y
+# The root is squashfs with zstd.
+CONFIG_SQUASHFS_ZSTD=y
+# CONFIG_SQUASHFS_ZLIB is not set
+CONFIG_UBIFS_FS=y
+# Each compressor keeps a workspace for all time.  LZO is the default.
+CONFIG_UBIFS_FS_ADVANCED_COMPR=y
+# CONFIG_UBIFS_FS_ZLIB is not set
+# CONFIG_UBIFS_FS_ZSTD is not set
+CONFIG_OVERLAY_FS=y

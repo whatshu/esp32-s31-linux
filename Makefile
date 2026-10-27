@@ -1,9 +1,9 @@
 SHELL := /bin/bash
 
-# The board: esp32s31 (the module alone), coreboard1 or korvo1.  See help.
+# The board: esp32s31 (the module alone), coreboard1, korvo1 or esp-mosaico.
 BOARD ?= esp32s31
-ifeq ($(filter $(BOARD),esp32s31 coreboard1 korvo1),)
-$(error BOARD must be esp32s31, coreboard1 or korvo1, not "$(BOARD)")
+ifeq ($(filter $(BOARD),esp32s31 coreboard1 korvo1 esp-mosaico),)
+$(error BOARD must be esp32s31, coreboard1, korvo1 or esp-mosaico, not "$(BOARD)")
 endif
 
 BUILD_DIR := build/$(BOARD)
@@ -155,9 +155,9 @@ help:
 		'SERIAL_PORT cannot.  BAUD and BOOT_TIMEOUT set the monitor.' \
 		'' \
 		'BOARD selects the board, for each target: esp32s31 (the default),' \
-		'coreboard1 or korvo1.  The output of a board goes to build/BOARD.' \
-		'On esp32s31 the rootfs is in the flash.  On korvo1 it is on the SD' \
-		'card, on coreboard1 on a USB stick.'
+		'coreboard1, korvo1 or esp-mosaico. Output goes to build/BOARD.' \
+		'On esp32s31 and esp-mosaico the rootfs is in flash; on korvo1, SD;' \
+		'on coreboard1, a USB stick.'
 
 check:
 	@test "$$(uname -s)" = Darwin || { echo 'this build is supported on macOS only'; exit 1; }
@@ -198,7 +198,7 @@ bootloader:
 		echo 'ESP-IDF environment setup failed (run $(IDF_PATH)/install.sh)'; \
 		exit 1; \
 	fi; \
-	cd bootloader && idf.py -B ../$(BUILD_DIR)/bootloader \
+	cd bootloader && "$(PYTHON)" "$(IDF_PATH)/tools/idf.py" -B ../$(BUILD_DIR)/bootloader \
 		-D SDKCONFIG="$(CURDIR)/$(BUILD_DIR)/sdkconfig" \
 		-D SDKCONFIG_DEFAULTS="$(SDKCONFIG_DEFAULTS)" build
 

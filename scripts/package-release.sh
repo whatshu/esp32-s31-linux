@@ -71,6 +71,12 @@ esp32s31)
 stay after a reboot and after a new flash.bin.  A data partition without UBI
 (a new board, or a board from v0.4.0) is erased and formatted at the first
 boot.  To go back to the image, run flash_erase /dev/mtd1 0 0 and reboot." ;;
+esp-mosaico)
+	title="the ESP-Mosaico CoreBoard V1.2"
+	usage="The full system is in the flash.  The root is writable, and the files
+stay after a reboot and after a new flash.bin.  A data partition without UBI
+is erased and formatted at the first boot.  To go back to the image, run
+flash_erase /dev/mtd1 0 0 and reboot." ;;
 esac
 
 cat > "$stage/FLASH.txt" <<TXT
