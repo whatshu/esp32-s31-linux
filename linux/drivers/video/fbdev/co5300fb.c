@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /* CO5300 QSPI framebuffer for the ESP-Mosaico CoreBoard V1.2 panel. */
+#include <linux/bitmap.h>
 #include <linux/console.h>
 #include <linux/delay.h>
 #include <linux/fb.h>
@@ -8,13 +9,16 @@
 #include <linux/mutex.h>
 #include <linux/regulator/consumer.h>
 #include <linux/spi/spi.h>
+#include <linux/spinlock.h>
 #include <linux/vmalloc.h>
 
 #define CO5300_WIDTH		480
 #define CO5300_HEIGHT		480
 #define CO5300_STRIDE		(CO5300_WIDTH * 2)
 #define CO5300_SIZE		(CO5300_STRIDE * CO5300_HEIGHT)
-#define CO5300_UPDATE_LINES	2
+#define CO5300_UPDATE_LINES	8
+#define CO5300_DIRTY_LINES	2
+#define CO5300_DIRTY_BLOCKS	(CO5300_HEIGHT / CO5300_DIRTY_LINES)
 #define CO5300_UPDATE_SIZE	(CO5300_STRIDE * CO5300_UPDATE_LINES)
 #define CO5300_WRITE_COMMAND	0x02
 #define CO5300_WRITE_PIXELS	0x32
@@ -29,8 +33,12 @@ struct co5300fb {
 	struct spi_device *spi;
 	struct gpio_desc *reset;
 	struct regulator *supply;
+	/* Serialize panel commands and the staging buffer. */
 	struct mutex lock;
 	struct fb_deferred_io defio;
+	/* Protect damage recorded by concurrent drawing callbacks. */
+	spinlock_t damage_lock;
+	DECLARE_BITMAP(dirty, CO5300_DIRTY_BLOCKS);
 	u32 palette[16];
 	u8 header[4];
 	u8 data[CO5300_UPDATE_SIZE];
@@ -38,7 +46,7 @@ struct co5300fb {
 
 /* The opcode and register address stay on one wire, pixels use four. */
 static int co5300fb_transfer(struct co5300fb *par, u8 cmd,
-			   size_t len, bool pixels)
+			     size_t len, bool pixels)
 {
 	struct spi_transfer xfers[2] = {
 		{ .tx_buf = par->header, .len = sizeof(par->header) },
@@ -101,35 +109,79 @@ static int co5300fb_init_panel(struct co5300fb *par)
 	return 0;
 }
 
+/* The panel requires even page boundaries, including for a one-line change. */
+static void co5300fb_mark_dirty(struct fb_info *info, unsigned int first,
+				unsigned int last)
+{
+	struct co5300fb *par = info->par;
+	unsigned long flags;
+
+	first /= CO5300_DIRTY_LINES;
+	last /= CO5300_DIRTY_LINES;
+	spin_lock_irqsave(&par->damage_lock, flags);
+	bitmap_set(par->dirty, first, last - first + 1);
+	spin_unlock_irqrestore(&par->damage_lock, flags);
+}
+
+static void co5300fb_mark_range(struct fb_info *info, unsigned long off,
+				size_t len)
+{
+	if (!len || off >= CO5300_SIZE)
+		return;
+	len = min_t(size_t, len, CO5300_SIZE - off);
+	co5300fb_mark_dirty(info, off / CO5300_STRIDE,
+			    (off + len - 1) / CO5300_STRIDE);
+}
+
 static int co5300fb_update(struct fb_info *info)
 {
 	struct co5300fb *par = info->par;
 	const u16 *fb = (const u16 *)info->screen_buffer;
-	unsigned int x, y;
-	int ret;
+	DECLARE_BITMAP(dirty, CO5300_DIRTY_BLOCKS);
+	unsigned int block, end, y, pixels, x;
+	unsigned long flags;
+	int ret = 0;
 
 	mutex_lock(&par->lock);
+	/* New damage during this transfer belongs to the next update. */
+	spin_lock_irqsave(&par->damage_lock, flags);
+	bitmap_copy(dirty, par->dirty, CO5300_DIRTY_BLOCKS);
+	bitmap_zero(par->dirty, CO5300_DIRTY_BLOCKS);
+	spin_unlock_irqrestore(&par->damage_lock, flags);
+	if (bitmap_empty(dirty, CO5300_DIRTY_BLOCKS))
+		goto out;
+
 	ret = co5300fb_window(par, CO5300_COLUMN_ADDRESS, 0, CO5300_WIDTH - 1);
 	if (ret)
-		goto out;
-	/* This panel accepts page windows covering pairs of scan lines. */
-	for (y = 0; y < CO5300_HEIGHT; y += CO5300_UPDATE_LINES) {
+		goto restore;
+	for (block = find_first_bit(dirty, CO5300_DIRTY_BLOCKS);
+	     block < CO5300_DIRTY_BLOCKS;
+	     block = find_next_bit(dirty, CO5300_DIRTY_BLOCKS, end)) {
+		end = find_next_zero_bit(dirty, CO5300_DIRTY_BLOCKS, block);
+		end = min(end, block + CO5300_UPDATE_LINES / CO5300_DIRTY_LINES);
+		y = block * CO5300_DIRTY_LINES;
+		pixels = (end - block) * CO5300_DIRTY_LINES * CO5300_WIDTH;
 		ret = co5300fb_window(par, CO5300_PAGE_ADDRESS, y,
-				      y + CO5300_UPDATE_LINES - 1);
+				      end * CO5300_DIRTY_LINES - 1);
 		if (ret)
-			break;
+			goto restore;
 		/* fbdev exposes native-endian RGB565; the panel takes MSB first. */
-		for (x = 0; x < CO5300_WIDTH * CO5300_UPDATE_LINES; x++) {
+		for (x = 0; x < pixels; x++) {
 			u16 pixel = fb[y * CO5300_WIDTH + x];
 
 			par->data[x * 2] = pixel >> 8;
 			par->data[x * 2 + 1] = pixel;
 		}
-		ret = co5300fb_transfer(par, CO5300_MEMORY_WRITE,
-				       CO5300_UPDATE_SIZE, true);
+		ret = co5300fb_transfer(par, CO5300_MEMORY_WRITE, pixels * 2, true);
 		if (ret)
-			break;
+			goto restore;
 	}
+	goto out;
+restore:
+	/* Preserve failed updates without losing concurrent damage. */
+	spin_lock_irqsave(&par->damage_lock, flags);
+	bitmap_or(par->dirty, par->dirty, dirty, CO5300_DIRTY_BLOCKS);
+	spin_unlock_irqrestore(&par->damage_lock, flags);
 out:
 	mutex_unlock(&par->lock);
 	return ret;
@@ -138,20 +190,29 @@ out:
 static void co5300fb_deferred_io(struct fb_info *info, struct list_head *pages)
 {
 	struct co5300fb *par = info->par;
-	int ret = co5300fb_update(info);
+	struct fb_deferred_io_pageref *pageref;
+	int ret;
 
+	list_for_each_entry(pageref, pages, list)
+		co5300fb_mark_range(info, pageref->offset, PAGE_SIZE);
+	ret = co5300fb_update(info);
 	if (ret)
 		dev_err_ratelimited(&par->spi->dev, "frame update failed: %d\n", ret);
 }
 
 static void co5300fb_damage_range(struct fb_info *info, off_t off, size_t len)
 {
+	co5300fb_mark_range(info, off, len);
 	schedule_delayed_work(&info->deferred_work, info->fbdefio->delay);
 }
 
 static void co5300fb_damage_area(struct fb_info *info, u32 x, u32 y,
-			       u32 width, u32 height)
+				 u32 width, u32 height)
 {
+	if (!width || !height || y >= CO5300_HEIGHT)
+		return;
+	co5300fb_mark_dirty(info, y,
+			    y + min_t(u32, height, CO5300_HEIGHT - y) - 1);
 	schedule_delayed_work(&info->deferred_work, info->fbdefio->delay);
 }
 
@@ -159,8 +220,8 @@ FB_GEN_DEFAULT_DEFERRED_SYSMEM_OPS(co5300fb, co5300fb_damage_range,
 				   co5300fb_damage_area)
 
 static int co5300fb_setcolreg(unsigned int regno, unsigned int red,
-			    unsigned int green, unsigned int blue,
-			    unsigned int transp, struct fb_info *info)
+			      unsigned int green, unsigned int blue,
+			      unsigned int transp, struct fb_info *info)
 {
 	struct co5300fb *par = info->par;
 
@@ -202,6 +263,8 @@ static int co5300fb_probe(struct spi_device *spi)
 	par = info->par;
 	par->spi = spi;
 	mutex_init(&par->lock);
+	spin_lock_init(&par->damage_lock);
+	bitmap_fill(par->dirty, CO5300_DIRTY_BLOCKS);
 	par->reset = devm_gpiod_get(dev, "reset", GPIOD_OUT_HIGH);
 	if (IS_ERR(par->reset)) {
 		ret = dev_err_probe(dev, PTR_ERR(par->reset), "reset GPIO\n");
@@ -239,7 +302,7 @@ static int co5300fb_probe(struct spi_device *spi)
 	info->flags = FBINFO_VIRTFB;
 	info->fbops = &co5300fb_ops;
 	info->pseudo_palette = par->palette;
-	par->defio.delay = HZ / 10;
+	par->defio.delay = max_t(unsigned long, 1, HZ / 50);
 	par->defio.deferred_io = co5300fb_deferred_io;
 	info->fbdefio = &par->defio;
 	ret = fb_deferred_io_init(info);
