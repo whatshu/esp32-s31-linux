@@ -28,10 +28,9 @@ There are four board configurations:
 | ESP-Mosaico CoreBoard V1.2 | `esp-mosaico` | flash | In development |
 
 ESP-Mosaico support targets CoreBoard V1.2. UART and Wi-Fi have been tested
-with the supplied `esp32s31` firmware. The new CST9220 touch driver, SPI
-controller and board device tree pass compilation; hardware validation is
-pending. The CO5300 display driver and a complete local firmware are still
-in progress.
+with the supplied `esp32s31` firmware. The local board firmware boots Linux with a flash rootfs and probes the
+CST9220 touch controller. The CO5300 QSPI framebuffer driver and display
+console pass compilation; display hardware validation is pending.
 
 1. Get the files of your board from the newest
    [release](https://github.com/annoyedmilk/esp32-s31-linux/releases).

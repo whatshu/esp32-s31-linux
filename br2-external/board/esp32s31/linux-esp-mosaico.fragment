@@ -1,13 +1,19 @@
-# ESP-Mosaico CoreBoard V1.2: flash root and CST9220 touch.
+# ESP-Mosaico CoreBoard V1.2: flash root, CO5300 display and CST9220 touch.
 # Merged into linux.config for esp-mosaico_defconfig.
 CONFIG_BUILTIN_DTB_NAME="espressif/esp32s31_esp_mosaico"
 # The UART is the only console.  The root is the squashfs partition of the
 # flash window.  overlay-init puts the data partition over it.
-CONFIG_CMDLINE="earlycon=sbi console=ttyS0,115200 esp32_shm.radio_service=bt root=/dev/mtdblock0 rootfstype=squashfs ro rootwait init=/sbin/overlay-init"
+CONFIG_CMDLINE="earlycon=sbi console=tty0 console=ttyS0,115200 esp32_shm.radio_service=bt root=/dev/mtdblock0 rootfstype=squashfs ro rootwait init=/sbin/overlay-init"
 
-# The QSPI display driver is added separately; keep input for touch.
-# CONFIG_FB is not set
-# CONFIG_VT is not set
+# The CO5300 is refreshed over QSPI from a software framebuffer.
+CONFIG_SPI=y
+CONFIG_SPI_ESP32S31=y
+CONFIG_FB=y
+CONFIG_FB_CO5300=y
+# CONFIG_FB_SIMPLE is not set
+CONFIG_VT=y
+CONFIG_VT_CONSOLE=y
+CONFIG_FRAMEBUFFER_CONSOLE=y
 CONFIG_INPUT=y
 CONFIG_INPUT_EVDEV=y
 CONFIG_INPUT_TOUCHSCREEN=y

@@ -51,6 +51,18 @@
 };
 
 &pinctrl {
+	spi2_cfg: spi2-cfg {
+		spi2-pins {
+			pinmux = <ESP32S31_MATRIX_OUT(42, ESP32S31_SIG_SPI2_CLK)>,
+				 <ESP32S31_MATRIX_OUT(36, ESP32S31_SIG_SPI2_D)>,
+				 <ESP32S31_MATRIX_OUT(51, ESP32S31_SIG_SPI2_Q)>,
+				 <ESP32S31_MATRIX_OUT(35, ESP32S31_SIG_SPI2_WP)>,
+				 <ESP32S31_MATRIX_OUT(9, ESP32S31_SIG_SPI2_HD)>;
+			bias-disable;
+			drive-strength = <20>;
+		};
+	};
+
 	i2c0_cfg: i2c0-cfg {
 		i2c0-pins {
 			pinmux = <ESP32S31_MATRIX_INOUT(56, ESP32S31_SIG_I2C0_SDA)>,
@@ -74,5 +86,21 @@
 		vdd-supply = <&vcc_3v3>;
 		touchscreen-size-x = <480>;
 		touchscreen-size-y = <480>;
+	};
+};
+
+&spi2 {
+	pinctrl-names = "default";
+	pinctrl-0 = <&spi2_cfg>;
+	cs-gpios = <&pinctrl 50 GPIO_ACTIVE_LOW>;
+	status = "okay";
+
+	display@0 {
+		compatible = "esp-mosaico,co5300-480x480";
+		reg = <0>;
+		spi-max-frequency = <20000000>;
+		spi-tx-bus-width = <4>;
+		reset-gpios = <&pinctrl 44 GPIO_ACTIVE_LOW>;
+		vdd-supply = <&vcc_3v3>;
 	};
 };
