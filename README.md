@@ -25,12 +25,15 @@ There are four board configurations:
 | ESP32-S31-WROOM-3-N16R16V module alone, on any board with UART0 | `esp32s31` (the default) | flash | `*-esp32s31-flash.zip` |
 | ESP32-S31-Function-CoreBoard-1 | `coreboard1` | USB stick | `*-coreboard1-flash.zip`, `*-coreboard1-usb.img.xz` |
 | ESP32-S31-Korvo-1 | `korvo1` | microSD card | `*-korvo1-flash.zip`, `*-korvo1-sdcard.img.xz` |
-| ESP-Mosaico CoreBoard V1.2 | `esp-mosaico` | flash | In development |
+| ESP-Mosaico CoreBoard V1.2 | `esp-mosaico` | NOR system, NAND writable files | In development |
 
-ESP-Mosaico support targets CoreBoard V1.2, with a flash rootfs, UART,
-Wi-Fi, a CO5300 framebuffer console and CST9220 touch input. See
-[Display and touch](docs/internals.md#display-and-touch) for implementation
-and validation details.
+ESP-Mosaico support targets CoreBoard V1.2, with UART, Wi-Fi, a CO5300
+framebuffer console and CST9220 touch input. Its 128 MiB NAND provides
+96 MiB for writable files and 32 MiB for swap, after zram. Initialize a new
+NAND with `nand-storage init ERASE` from the console, then reboot; this
+erases both NAND partitions. Boot never formats NAND automatically. See
+[internals](docs/internals.md#esp-mosaico-nand-storage) for storage details
+and [display and touch](docs/internals.md#display-and-touch) for those drivers.
 
 1. Get the files of your board from the newest
    [release](https://github.com/annoyedmilk/esp32-s31-linux/releases).

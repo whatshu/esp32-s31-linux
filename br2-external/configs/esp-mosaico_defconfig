@@ -122,9 +122,8 @@ BR2_PACKAGE_BLUEZ5_UTILS=y
 BR2_PACKAGE_BLUEZ5_UTILS_CLIENT=y
 # Lua, a script language small enough for the flash root of the module.
 BR2_PACKAGE_LUA=y
-# The root in the flash, for the module alone (esp32s31), which has no
-# disk.  The root is a squashfs, with a UBIFS overlay that keeps all
-# changes (overlay-init).  The flash is small, so these builds are lean.
+# A compressed NOR system for esp32s31 and esp-mosaico. Each board selects
+# its writable overlay and setup tools. These builds have no root disk.
 # The read-only root on the flash.  Small blocks keep the decompression
 # cache of the kernel small.  zstd with the extreme setting makes the image
 # smaller than gzip, and it decompresses faster than xz.
@@ -132,8 +131,8 @@ BR2_TARGET_ROOTFS_SQUASHFS=y
 BR2_TARGET_ROOTFS_SQUASHFS4_ZSTD=y
 BR2_TARGET_ROOTFS_SQUASHFS_EXTREME_COMP=y
 BR2_TARGET_ROOTFS_SQUASHFS_BS_32K=y
-# flash_erase resets the overlay to the image.  overlay-init needs
-# ubiattach and ubimkvol.  The NOR flash needs no NAND or other UBI tools.
+# Both overlay implementations need ubiattach and ubimkvol. Board fragments
+# select any additional NAND initialization tools.
 BR2_PACKAGE_MTD=y
 # BR2_PACKAGE_MTD_FLASH_LOCK is not set
 # BR2_PACKAGE_MTD_FLASH_UNLOCK is not set
@@ -143,8 +142,6 @@ BR2_PACKAGE_MTD=y
 # BR2_PACKAGE_MTD_NANDWRITE is not set
 # BR2_PACKAGE_MTD_UBIBLOCK is not set
 # BR2_PACKAGE_MTD_UBICRC32 is not set
-# BR2_PACKAGE_MTD_UBIDETACH is not set
-# BR2_PACKAGE_MTD_UBIFORMAT is not set
 # BR2_PACKAGE_MTD_UBIHEALTHD is not set
 # BR2_PACKAGE_MTD_UBINFO is not set
 # BR2_PACKAGE_MTD_UBINIZE is not set
@@ -152,7 +149,11 @@ BR2_PACKAGE_MTD=y
 # BR2_PACKAGE_MTD_UBIRMVOL is not set
 # BR2_PACKAGE_MTD_UBIRSVOL is not set
 # BR2_PACKAGE_MTD_UBIUPDATEVOL is not set
-# ESP-Mosaico CoreBoard V1.2. Flash root and CST9220 touch; CO5300 support is in progress.
-BR2_ROOTFS_OVERLAY="$(BR2_EXTERNAL_ESP32S31_PATH)/board/esp32s31/rootfs-overlay $(BR2_EXTERNAL_ESP32S31_PATH)/board/esp32s31/rootfs-overlay-flashroot $(BR2_EXTERNAL_ESP32S31_PATH)/board/esp32s31/rootfs-overlay-esp-mosaico $(BR2_EXTERNAL_ESP32S31_PATH)/../local-overlay"
+# ESP-Mosaico CoreBoard V1.2. NOR boot, NAND storage, display and touch.
+BR2_ROOTFS_OVERLAY="$(BR2_EXTERNAL_ESP32S31_PATH)/board/esp32s31/rootfs-overlay $(BR2_EXTERNAL_ESP32S31_PATH)/board/esp32s31/rootfs-overlay-esp-mosaico $(BR2_EXTERNAL_ESP32S31_PATH)/../local-overlay"
 BR2_LINUX_KERNEL_CONFIG_FRAGMENT_FILES="$(BR2_EXTERNAL_ESP32S31_PATH)/board/esp32s31/linux-esp-mosaico.fragment"
 BR2_PACKAGE_EVTEST=y
+BR2_PACKAGE_MTD_UBIDETACH=y
+BR2_PACKAGE_MTD_UBIFORMAT=y
+BR2_PACKAGE_TAR=y
+BR2_PACKAGE_ATTR=y

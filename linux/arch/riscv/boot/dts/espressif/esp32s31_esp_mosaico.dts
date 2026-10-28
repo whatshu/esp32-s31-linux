@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: GPL-2.0+
 /*
- * ESP-Mosaico CoreBoard V1.2 (16 MiB flash, 16 MiB PSRAM).
+ * ESP-Mosaico CoreBoard V1.2 (16 MiB NOR, 128 MiB NAND, 16 MiB PSRAM).
  * The root filesystem is in flash. The shared I2C bus carries the touch
  * controller and sensors; the CO5300 display uses a separate QSPI bus.
  */
@@ -28,7 +28,7 @@
 	};
 };
 
-/* The rootfs and data partitions of partitions-esp-mosaico.csv. */
+/* The read-only rootfs partition of partitions-esp-mosaico.csv. */
 &wifi {
 	flash {
 		partitions {
@@ -38,13 +38,8 @@
 
 			partition@0 {
 				label = "rootfs";
-				reg = <0x0 0x780000>;
+				reg = <0x0 0x970000>;
 				read-only;
-			};
-
-			partition@780000 {
-				label = "data";
-				reg = <0x780000 0x270000>;
 			};
 		};
 	};
@@ -69,6 +64,24 @@
 				 <ESP32S31_MATRIX_INOUT(3, ESP32S31_SIG_I2C0_SCL)>;
 			bias-pull-up;
 			drive-open-drain;
+		};
+	};
+
+	spi3_cfg: spi3-cfg {
+		spi3-output-pins {
+			pinmux = <ESP32S31_MATRIX_OUT(20, ESP32S31_SIG_SPI3_CLK)>,
+				 <ESP32S31_MATRIX_OUT(23, ESP32S31_SIG_SPI3_CS0)>;
+			bias-disable;
+			drive-strength = <20>;
+		};
+
+		spi3-data-pins {
+			pinmux = <ESP32S31_MATRIX_INOUT(21, ESP32S31_SIG_SPI3_D)>,
+				 <ESP32S31_MATRIX_INOUT(22, ESP32S31_SIG_SPI3_Q)>,
+				 <ESP32S31_MATRIX_INOUT(25, ESP32S31_SIG_SPI3_WP)>,
+				 <ESP32S31_MATRIX_INOUT(24, ESP32S31_SIG_SPI3_HD)>;
+			bias-pull-up;
+			drive-strength = <20>;
 		};
 	};
 };
@@ -104,5 +117,38 @@
 		spi-tx-bus-width = <4>;
 		reset-gpios = <&pinctrl 44 GPIO_ACTIVE_LOW>;
 		vdd-supply = <&vcc_3v3>;
+	};
+};
+
+/* The GD5F1GM7UEYIGR is separate from the boot NOR on MSPI. */
+&spi3 {
+	assigned-clocks = <&hp_clkrst ESP32S31_CLK_SPI3>;
+	assigned-clock-rates = <80000000>;
+	pinctrl-names = "default";
+	pinctrl-0 = <&spi3_cfg>;
+	status = "okay";
+
+	flash@0 {
+		compatible = "spi-nand";
+		reg = <0>;
+		spi-max-frequency = <20000000>;
+		spi-tx-bus-width = <4>;
+		spi-rx-bus-width = <4>;
+
+		partitions {
+			compatible = "fixed-partitions";
+			#address-cells = <1>;
+			#size-cells = <1>;
+
+			partition@0 {
+				label = "nand-data";
+				reg = <0x0 0x6000000>;
+			};
+
+			partition@6000000 {
+				label = "nand-swap";
+				reg = <0x6000000 0x2000000>;
+			};
+		};
 	};
 };

@@ -2,8 +2,8 @@
 # Merged into linux.config for esp-mosaico_defconfig.
 CONFIG_BUILTIN_DTB_NAME="espressif/esp32s31_esp_mosaico"
 # The UART is the only console.  The root is the squashfs partition of the
-# flash window.  overlay-init puts the data partition over it.
-CONFIG_CMDLINE="earlycon=sbi console=tty0 console=ttyS0,115200 esp32_shm.radio_service=bt root=/dev/mtdblock0 rootfstype=squashfs ro rootwait init=/sbin/overlay-init"
+# flash window. All writable files are in the NAND UBIFS overlay.
+CONFIG_CMDLINE="earlycon=sbi console=tty0 console=ttyS0,115200 esp32_shm.radio_service=bt root=/dev/mtdblock0 rootfstype=squashfs ro rootwait init=/sbin/nand-overlay-init"
 
 # The CO5300 is refreshed over QSPI from a software framebuffer.
 CONFIG_SPI=y
@@ -35,12 +35,17 @@ CONFIG_REGULATOR_FIXED_VOLTAGE=y
 # CONFIG_VFAT_FS is not set
 # CONFIG_UEVENT_HELPER is not set
 
-# The flash window of the firmware: a read-only squashfs root, and UBIFS on
-# the data partition as the writable overlay over it.  jffs2 cannot be the
-# upper layer: it has no RENAME_WHITEOUT, so overlayfs cannot make a
-# directory where a lower one was deleted.
+# The NOR window is a read-only squashfs root; NAND UBIFS is its writable
+# overlay. jffs2 cannot be the upper layer: it has no RENAME_WHITEOUT,
+# so overlayfs cannot make a directory where a lower one was deleted.
 CONFIG_MTD=y
 CONFIG_MTD_BLOCK=y
+CONFIG_MTD_SPI_NAND=y
+
+# Load mtdswap only after resolving the NAND partition by name. Its module
+# parameter takes an MTD index, which is not a stable board identifier.
+CONFIG_MODULES=y
+CONFIG_MTD_SWAP=m
 CONFIG_MTD_UBI=y
 # squashfs and UBIFS are in this menu, which linux.config turns off.
 CONFIG_MISC_FILESYSTEMS=y

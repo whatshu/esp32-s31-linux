@@ -73,10 +73,17 @@ stay after a reboot and after a new flash.bin.  A data partition without UBI
 boot.  To go back to the image, run flash_erase /dev/mtd1 0 0 and reboot." ;;
 esp-mosaico)
 	title="the ESP-Mosaico CoreBoard V1.2"
-	usage="The full system is in the flash.  The root is writable, and the files
-stay after a reboot and after a new flash.bin.  A data partition without UBI
-is erased and formatted at the first boot.  To go back to the image, run
-flash_erase /dev/mtd1 0 0 and reboot." ;;
+	usage="The read-only system is in the 16 MiB NOR flash.  The 128 MiB NAND
+provides a 96 MiB writable filesystem partition and a 32 MiB swap partition.
+Files on initialized NAND stay after a reboot and after a new flash.bin.
+
+On a new board, initialize NAND from the serial console, then reboot:
+
+  nand-storage init ERASE
+  reboot
+
+This command ERASES both NAND partitions.  Boot never formats NAND: if it
+is missing or not initialized, the system starts with a read-only root." ;;
 esac
 
 cat > "$stage/FLASH.txt" <<TXT

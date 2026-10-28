@@ -459,10 +459,10 @@ flash, through the cache. So hart 0 maps the flash for Linux and writes it
 for Linux, through a mailbox in the shared block (`ESP_SHM_FLASH`), and
 Linux sees a standard MTD device.
 
-- **The window.** The firmware gives Linux the `rootfs` and `data`
-  partitions of its partition table, which must be adjacent, and nothing
-  else. `esp32s31.dts` describes the same layout as `fixed-partitions`
-  under the `flash` node.
+- **The window.** The firmware gives Linux the `rootfs` partition and, if
+  present, the adjacent `data` partition, and nothing else. Each board's
+  device tree describes the same layout as `fixed-partitions` under the
+  `flash` node. ESP-Mosaico exposes only its read-only NOR rootfs.
 - **Reads.** At start, the firmware maps the window in the flash cache
   (`spi_flash_mmap`) and writes the address to the mailbox. Linux maps it
   write-back and reads it with `memcpy`, without hart 0: 15.5 MB/s. A read
@@ -503,6 +503,123 @@ Linux sees a standard MTD device.
   shows 64 KiB erase blocks: UBIFS needs a logical erase block of at least
   15 KiB, and UBI takes 128 bytes of each block for its headers.
 
+## ESP-Mosaico NAND storage
+
+CoreBoard V1.2 has a GD25Q128EWIGR 16 MiB boot NOR and a separate
+GD5F1GM7UEYIGR 128 MiB SPI NAND. The NOR holds the loader, OpenSBI, kernel
+and compressed read-only system. The NAND on GPSPI3 supplies a 96 MiB
+`nand-data` partition and a 32 MiB `nand-swap` partition. Usable space is
+smaller after bad-block reserves, UBI headers, filesystem metadata and
+swap wear-levelling overhead.
+
+The board follows the official BSP wiring: CLK20, D21, Q22, CS23, HOLD24
+and WP25. The BSP's `onboard/nand_flash.c` releases HOLD and WP before
+reading the ID and enabling QE, then uses quad I/O and ESP-IDF DMA.
+Its defaults are 40 MHz, a 4 KiB maximum transfer and a queue of ten
+transactions. These are transport settings, not filesystem throughput.
+The BSP's `spi_nand_flash` 1.3.0 dependency sends a whole cache read or
+program load as one transaction. Its GigaDevice table delays 25 us before
+read-status checks and 380 us before program-status checks. Linux retains
+its SPI-NAND operation timing, timeout and ECC handling; those mechanisms
+already implement the same page/cache sequence. The ESP-IDF component's
+Dhara metadata layout is not used for Linux UBI or mtdswap.
+Linux's SPI-NAND core already handles QE, ECC and the chip's cache/program
+commands. The GPSPI driver preserves high idle levels on the data pins
+before QE is enabled, matching the BSP's bootstrap requirement. Clearing
+those levels leaves HOLD asserted and causes probe timeouts.
+
+GPSPI3 uses hardware CS and the driver's native `spi-mem` operations.
+Command, address and dummy cycles use their hardware phases; a page's
+data continues through the 64-byte FIFO with CS held between chunks.
+This removes the generic path's temporary message allocation and
+separate transfers for each phase. CS hold timing matches the ESP-IDF
+master's one-clock setting. Clock divisors are cached. GPSPI2
+continues to use the display's GPIO CS path. The current Linux driver
+uses PIO; ESP-IDF's DMA support cannot be reused without a Linux DMA
+controller driver and validated channel, descriptor and cache handling.
+
+GD5F1GM7UE reserves only the first OOB byte for its bad-block marker.
+The next byte is free for filesystem or swap metadata. The kernel patch
+`0024-mtd-spinand-use-one-byte-BBM-on-GD5F1GM7UE.patch` makes bad-block
+checks and marking follow that layout for this part. Otherwise, mtdswap's
+valid `95 20` erase-count marker at OOB offset 1 makes every used swap
+erase block look bad after reboot. A raw read distinguishes this case:
+`ff 95 20` starts with a good block marker. No erase is needed to recover
+from that false classification.
+
+`nand-storage init ERASE [overlay.tar]` is an explicit destructive setup
+command. It checks partition names, types, sizes and whether they are in
+use, then creates a UBI `data` volume with `upper` and `work` directories.
+An optional whole-overlay archive is extracted with xattrs and numeric
+ownership. The readiness marker is written last. Early init never formats
+storage: it mounts the initialized NAND upper layer over the NOR root,
+or falls back to the read-only NOR system on failure. Wi-Fi settings,
+SSH keys and all other configuration remain ordinary files in that
+upper layer. Keep personal overlays and migration archives out of Git
+and release images.
+
+`S05swap.sh` starts 6 MiB of zram at priority 100. `S06nand-swap.sh`
+resolves `nand-swap` by its label and loads `mtdswap` at priority 10.
+The MTD block translation layer handles erases, bad blocks and wear
+levelling, and supplies its own swap header. Do not run `mkswap` on a raw
+`mtdblock` device or use a UBIFS swap file. A 32 MiB physical partition
+provides about 28.9 MiB of swap after translation reserves.
+
+### Storage validation
+
+Initial testing at 20 MHz quad I/O used the generic SPI message path
+with the corrected WP/HOLD levels. A 4 MiB incompressible file, written
+with fsync and read back after sync and dropping page caches, measured
+0.183 MiB/s write and 0.255 MiB/s cold read with byte-for-byte verification.
+Raw 2 MiB MTD reads took 0.50 s, including 0.47 s of kernel CPU time.
+These are baseline results, not measurements of the native SPI-mem path.
+No uncorrectable ECC errors occurred; four corrected bits were reported
+after the write. The native path is built at the same 20 MHz for the
+first hardware comparison; the BSP's 40 MHz setting needs a separate
+integrity and throughput check before raising the board frequency.
+
+After a flash, check the NAND upper mount, both swap priorities and the
+MTD ECC/bad-block counters. Repeat incompressible write/fsync, cold read
+and byte comparison, then apply memory pressure and verify the data
+again. Reboot and recheck swap availability: this exercises the OOB
+marker regression. Verify ordinary writable-file persistence and the
+display and touch paths too. Never unbind GPSPI3 while UBI or NAND swap
+is using it. Test programs, captures and migration archives stay in
+ignored build output.
+
+### Execution and memory
+
+Linux continues to execute from PSRAM. Both harts are already in use:
+hart 0 runs the radio firmware, with code mapped from NOR, and hart 1
+runs Linux. Internal SRAM holds firmware state, stacks, shared-memory
+queues, the DMA pool and Linux trap code. The rest remains firmware heap;
+giving it to Linux would overwrite allocations used by the radios.
+The device tree exposes the 16 MiB PSRAM except for the documented
+OpenSBI and guard reservations. Zram compresses cold pages in that same
+RAM; NAND swap adds backing capacity, not PSRAM bandwidth.
+
+The GD25Q128E supports hardware XiP, but this Linux 7.3 RISC-V port has no
+`CONFIG_XIP_KERNEL` implementation. A Linux XiP port would require split
+NOR/RAM linking, early data relocation, changes to physical/virtual
+address translation and boot mappings, loader/OpenSBI handoff changes,
+and validation of flash mappings, cache maintenance and instruction
+patching while hart 0 uses the same NOR. This is substantial architecture
+work, so it is intentionally deferred. SPI NAND requires page reads into
+its internal cache and cannot serve as a CPU instruction mapping.
+Squashfs already keeps compressed executable files in NOR; its RAM page
+cache is reclaimable.
+
+Reference documents are GigaDevice's GD5F1GM7UE Rev.1.6MT, section 12.4
+and the recommended spare-area table (bad-block marker and OOB), and
+GD25Q128E Rev.1.4 (XiP). The official implementation used for comparison is
+[ESP-Mosaico BSP NAND initialization](https://github.com/esp-mosaico/esp-mosaico-bsp/blob/7cbfb390638dcb93522fc3cde094b2d43cf907c2/components/esp-mosaico-bsp/onboard/nand_flash.c),
+along with its `include/bsp/nand_flash.h` defaults and the pinned
+[SPI NAND transaction implementation](https://github.com/espressif/idf-extra-components/blob/0fe2ac6c6fea758108bf1f5ef2b3bf99ce879db1/spi_nand_flash/src/spi_nand_oper.c).
+Other references are ESP-IDF's ESP32-S31 GPSPI HAL and [SPI master documentation](https://docs.espressif.com/projects/esp-idf/en/latest/esp32s31/api-reference/peripherals/spi_master.html).
+Linux 7.3's SPI-NAND and RISC-V implementations supply the kernel-side
+contracts. Reference checkouts and downloaded datasheets stay in ignored
+`vendor/` or `build/` directories.
+
 ## Build configurations
 
 The four builds share one Buildroot base
@@ -514,8 +631,9 @@ Function-CoreBoard-1 have it on a disk, the card or a USB stick
 (`diskroot.fragment`). A setting is in one fragment only, and `make check`
 fails when a defconfig in `br2-external/configs/` differs from its fragments.
 
-The table compares the original three builds. ESP-Mosaico also uses the
-flash root, with the CO5300 display and CST9220 touch drivers and `evtest`.
+The table compares the original three builds. ESP-Mosaico uses a NOR
+system with a NAND upper layer, the CO5300 display and CST9220 touch
+drivers, `evtest`, GNU tar with xattrs and the NAND setup tools.
 
 | | Module alone | Function-CoreBoard-1 | Korvo-1 |
 | --- | --- | --- | --- |
