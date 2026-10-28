@@ -56,7 +56,7 @@
 	/* Native USB Serial/JTAG is disabled by the loader for camera D2. */
 	gpio-reserved-ranges = <26 7>, <41 1>, <58 2>;
 
-	camera-flash-off {
+	camera-flash-off-hog {
 		gpio-hog;
 		gpios = <34 GPIO_OPEN_DRAIN>;
 		output-high;
