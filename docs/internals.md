@@ -421,7 +421,10 @@ buffer, with a 20 ms deferred update delay.
 
 The framebuffer console, RGB565 color bars through `/dev/fb0`, partial
 writes, mmap updates and display recovery after Linux reboot have been
-checked on the board.
+checked on the board. After the BBPLL correction, 90 synchronous full-frame
+updates measured 11.132–11.229 FPS at 40 MHz. Camera capture confirmed the
+test bars were displayed. A five-second idle sample used about 0.8% CPU;
+the touch device was closed during that sample.
 
 ### CST9220 touch
 
@@ -538,6 +541,25 @@ continues to use the display's GPIO CS path. The current Linux driver
 uses PIO; ESP-IDF's DMA support cannot be reused without a Linux DMA
 controller driver and validated channel, descriptor and cache handling.
 
+GPSPI source selector 2 is the 480 MHz BBPLL, not CPLL / 2.
+The device tree supplies BBPLL separately to the clock provider. As in
+ESP-IDF, the master divider stays at two, and the high-speed clock is
+limited to 160 MHz. A requested 80 MHz master clock therefore uses
+BBPLL / 3 / 2; the SPI counter divides it by two for 40 MHz on the wire.
+The earlier 160 MHz source model overclocked transfers: requesting
+40 MHz returned a shifted NAND ID. Reading the same ID with the corrected
+dividers returns `c8 91`. Changing only the master-to-HS ratio did not
+fix the ID; both the source rate and divider constraints are required.
+GPSPI2 uses the same corrected clock model.
+
+The controller also provides native status polling. This kernel uses
+100 Hz ticks without high-resolution timers: a short `usleep_range()`
+can last a whole tick. The generic status loop therefore became slower
+after command transfers were shortened enough to observe NAND busy.
+Poll actively for at most 1 ms, preserving the SPI-NAND timeout; slow
+erases and devices that stay busy then sleep. This matches the official
+component's short-delay strategy without busy-waiting through an erase.
+
 GD5F1GM7UE reserves only the first OOB byte for its bad-block marker.
 The next byte is free for filesystem or swap metadata. The kernel patch
 `0024-mtd-spinand-use-one-byte-BBM-on-GD5F1GM7UE.patch` makes bad-block
@@ -558,25 +580,65 @@ SSH keys and all other configuration remain ordinary files in that
 upper layer. Keep personal overlays and migration archives out of Git
 and release images.
 
-`S05swap.sh` starts 6 MiB of zram at priority 100. `S06nand-swap.sh`
-resolves `nand-swap` by its label and loads `mtdswap` at priority 10.
-The MTD block translation layer handles erases, bad blocks and wear
-levelling, and supplies its own swap header. Do not run `mkswap` on a raw
-`mtdblock` device or use a UBIFS swap file. A 32 MiB physical partition
-provides about 28.9 MiB of swap after translation reserves.
+`S05swap.sh` starts zram at priority 100. The common default is 6 MiB;
+Mosaico's `/etc/default/swap` sets 2 MiB so incompressible pages cannot
+consume almost all PSRAM before lower-priority NAND swap is reached.
+A zram memory limit is not a spill policy: rejected writes report I/O
+errors. Bound its logical size instead and let swap priorities choose
+NAND after it fills.
+
+`S06nand-swap.sh` resolves `nand-swap` by its label and loads `mtdswap`
+at priority 10. The MTD translation layer handles erases, bad blocks and
+wear levelling and supplies its own swap header. It enables
+`reserve_marker_pages=1`: the first two NAND pages of each eraseblock
+contain clean/dirty OOB markers and are excluded from swap data. On-die
+ECC protects these markers; programming swap data over them would try
+to replace already programmed parity bits and cause uncorrectable reads.
+The reservation rounds up to a system page and reduces the advertised
+capacity and free-page accounting. Other mtdswap users keep the default
+layout. The resulting 32 MiB physical partition provides 28,644 KiB of
+swap, after page reservations and translation spares. Do not run
+`mkswap` on a raw `mtdblock` device or use a UBIFS swap file.
 
 ### Storage validation
 
-Initial testing at 20 MHz quad I/O used the generic SPI message path
-with the corrected WP/HOLD levels. A 4 MiB incompressible file, written
-with fsync and read back after sync and dropping page caches, measured
-0.183 MiB/s write and 0.255 MiB/s cold read with byte-for-byte verification.
-Raw 2 MiB MTD reads took 0.50 s, including 0.47 s of kernel CPU time.
-These are baseline results, not measurements of the native SPI-mem path.
-No uncorrectable ECC errors occurred; four corrected bits were reported
-after the write. The native path is built at the same 20 MHz for the
-first hardware comparison; the BSP's 40 MHz setting needs a separate
-integrity and throughput check before raising the board frequency.
+Validation uses incompressible data rather than zero-filled files.
+The initial generic SPI path measured 0.183 MiB/s write with fsync and
+0.255 MiB/s cold read with byte verification. Native memory operations
+and bounded status polling removed the allocation/phase overhead and
+tick-sized waits. Earlier tests labelled 20 MHz predate the BBPLL
+correction and must not be treated as calibrated frequency comparisons.
+
+On 2026-10-28, the final kernel at the corrected 40 MHz passed:
+
+| Check | Result |
+| --- | --- |
+| 4 MiB incompressible UBIFS write with fsync, three runs | 1.422–1.627 MiB/s; median 1.435 MiB/s |
+| Cold read and byte verification of each file | 2.267–2.289 MiB/s; median 2.275 MiB/s |
+| Raw 2 MiB MTD read | 0.50 s elapsed, 0.46 s kernel CPU |
+| Direct swap-block I/O, with swap disabled | Two complete 28,644 KiB overwrite/readback passes, exercising garbage collection |
+| 16 MiB incompressible memory pressure | Forward and reverse byte verification passed; NAND swap reached 14,572 KiB |
+| ECC and bad blocks after testing and reset | Zero uncorrectable errors and zero bad blocks on both partitions |
+| Existing configuration files across firmware update and reset | Hashes unchanged; contents stayed on NAND |
+
+The memory-pressure test took 72.114 s, with 1,404 major page faults,
+0.551 s user CPU and 11.661 s system CPU in the test process.
+The file benchmark includes data generation and verification: process
+CPU time was 0.874–0.928 s for write and 1.716–1.722 s for read. It
+excludes background UBI work. PIO remains CPU-bound during reads; these
+results do not imply DMA or wire-rate throughput.
+
+Memory-pressure testing exposed both issues above. With 6 MiB zram,
+incompressible data exhausted PSRAM before NAND swap was used. With
+2 MiB zram and the original mtdswap layout, 16 MiB of test data reached
+NAND but failed on read with `-EBADMSG`. A 512 KiB direct block write/read
+reproduced that failure without memory pressure. Reserving marker pages
+made the direct test pass with no new ECC failures. The final full-capacity
+and memory-pressure tests confirm the reservation also works across
+garbage collection. Reboot activated 2,044 KiB zram and 28,644 KiB NAND
+swap, with zero uncorrectable errors. A new 64 KiB random file also
+retained its hash after a synchronized reboot. The writable filesystem
+partition is unaffected by the swap layout change.
 
 After a flash, check the NAND upper mount, both swap priorities and the
 MTD ECC/bad-block counters. Repeat incompressible write/fsync, cold read
@@ -586,6 +648,15 @@ marker regression. Verify ordinary writable-file persistence and the
 display and touch paths too. Never unbind GPSPI3 while UBI or NAND swap
 is using it. Test programs, captures and migration archives stay in
 ignored build output.
+
+For serial-only development, ESP-IDF defines
+`LP_SYSTEM_REG_FORCE_DOWNLOAD_BOOT` at `0x20700008`, bit 2. A temporary
+diagnostic module can set that bit before a normal, synchronized reboot.
+After flashing, reconnect at the baud rate left by the flasher (921600
+in these tests), clear bit 2 and use the supported esptool watchdog reset.
+Then restore the host console to 115200 baud. This avoids depending on
+RTS/DTR wiring; keep the helper in ignored build output. It is not part
+of the production driver.
 
 ### Execution and memory
 
@@ -615,7 +686,9 @@ GD25Q128E Rev.1.4 (XiP). The official implementation used for comparison is
 [ESP-Mosaico BSP NAND initialization](https://github.com/esp-mosaico/esp-mosaico-bsp/blob/7cbfb390638dcb93522fc3cde094b2d43cf907c2/components/esp-mosaico-bsp/onboard/nand_flash.c),
 along with its `include/bsp/nand_flash.h` defaults and the pinned
 [SPI NAND transaction implementation](https://github.com/espressif/idf-extra-components/blob/0fe2ac6c6fea758108bf1f5ef2b3bf99ce879db1/spi_nand_flash/src/spi_nand_oper.c).
-Other references are ESP-IDF's ESP32-S31 GPSPI HAL and [SPI master documentation](https://docs.espressif.com/projects/esp-idf/en/latest/esp32s31/api-reference/peripherals/spi_master.html).
+Other references are ESP-IDF's
+[ESP32-S31 clock source rates](https://github.com/espressif/esp-idf/blob/fff9895c82d744c7237be8847347bdd1b07c6643/components/esp_hw_support/port/esp32s31/esp_clk_tree.c),
+its ESP32-S31 GPSPI HAL and [SPI master documentation](https://docs.espressif.com/projects/esp-idf/en/latest/esp32s31/api-reference/peripherals/spi_master.html).
 Linux 7.3's SPI-NAND and RISC-V implementations supply the kernel-side
 contracts. Reference checkouts and downloaded datasheets stay in ignored
 `vendor/` or `build/` directories.
