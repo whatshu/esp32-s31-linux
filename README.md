@@ -38,7 +38,8 @@ erases both NAND partitions. Boot never formats NAND automatically. See
 and [display and touch](docs/internals.md#display-and-touch) for those drivers.
 See [camera](docs/internals.md#esp-mosaico-camera) for module handling and limits.
 The board also exposes the BMI270 IMU and two BMM150 magnetometers through
-IIO, an AI button and a GPIO vibrator. See
+IIO, an interrupt-driven AI button and a GPIO vibrator. Native Type-C CDC
+ACM support is implemented, with final hardware validation pending. See
 [on-board peripherals](docs/internals.md#esp-mosaico-on-board-peripherals)
 for their interfaces and current limitations.
 

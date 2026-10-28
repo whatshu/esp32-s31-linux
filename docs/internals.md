@@ -819,6 +819,37 @@ keeps the existing SBI shutdown path. ES8311 responds at `0x19`, but
 an ESP32-S31 I2S/ALSA path and speaker playback remain unimplemented.
 No speaker playback was performed during this work.
 
+### Native Type-C USB
+
+The board connector uses the dedicated high-speed USB PHY and DWC2, separate
+from the external CH343 UART bridge and GPIO33/34 Serial/JTAG pads. The
+HUSB320 controls CC detection and power direction autonomously; its
+unconnected I2C pins do not provide role notifications to Linux.
+
+ESP-Mosaico selects **fixed peripheral mode**. `S10usb` loads DWC2 and
+`g_serial use_acm=1`, exposing a CDC ACM data channel at `/dev/ttyGS0`.
+No login service runs on that port. Connect a data-capable Type-C cable
+to a computer while retaining the external UART connection. The computer
+should enumerate a USB ACM port. Check the UDC state with:
+
+```sh
+for d in /sys/class/udc/*; do
+    echo "$d: $(cat "$d/state")"
+done
+```
+
+A `configured` state and bidirectional byte transfer are required for a
+functional check; a UDC alone is insufficient. `S10usb stop` disconnects
+the gadget without unloading the controller. Runtime host/device switching
+is unsupported: an experimental host-to-device switch hung this board and
+required a physical reset. Other boards retain their host configurations.
+
+The generic PHY receives the fixed controller mode after initialization
+and before power-on, so peripheral mode removes host pull-downs. All seven
+endpoint TX FIFO sizes are explicit: RX 384 words, EP0 TX 64, remaining
+TX FIFOs 128/128/16/16/16/16/16, totaling 784 of 896 words. Gadget buffer
+and descriptor DMA remain disabled; USB throughput has not been measured.
+
 ### BQ27220 battery gauge
 
 **Known issue (2026-10-28): BQ27220 does not respond at I2C address

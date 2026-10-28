@@ -1,0 +1,29 @@
+#!/bin/sh
+# SPDX-License-Identifier: MIT
+# Type-C CC detection and VBUS direction are controlled by the HUSB320.
+
+case "$1" in
+start)
+	modprobe dwc2 || exit 1
+	# A serial data channel; no additional login service is started.
+	modprobe g_serial use_acm=1 || exit 1
+	for udc in /sys/class/udc/*; do
+		[ -e "$udc/soft_connect" ] || continue
+		echo connect > "$udc/soft_connect"
+	done
+	;;
+stop)
+	for udc in /sys/class/udc/*; do
+		[ -e "$udc/soft_connect" ] || continue
+		echo disconnect > "$udc/soft_connect"
+	done
+	;;
+restart|reload)
+	"$0" stop
+	"$0" start
+	;;
+*)
+	echo "Usage: $0 {start|stop|restart|reload}" >&2
+	exit 1
+	;;
+esac

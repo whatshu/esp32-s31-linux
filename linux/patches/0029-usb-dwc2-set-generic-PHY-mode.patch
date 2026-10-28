@@ -1,0 +1,50 @@
+From: whatshu <shussm@qq.com>
+Subject: [PATCH] usb: dwc2: set generic PHY mode for fixed-role controllers
+
+Select host pull-downs or peripheral signalling after initializing the
+PHY. Repeat this when re-enabling the hardware, since PHY initialization
+may reset its mode. Do not change the behaviour of OTG controllers.
+
+Signed-off-by: whatshu <shussm@qq.com>
+---
+diff --git a/drivers/usb/dwc2/platform.c b/drivers/usb/dwc2/platform.c
+--- a/drivers/usb/dwc2/platform.c
++++ b/drivers/usb/dwc2/platform.c
+@@ -94,7 +94,12 @@
+ static int __dwc2_lowlevel_hw_enable(struct dwc2_hsotg *hsotg)
+ {
+ 	struct platform_device *pdev = to_platform_device(hsotg->dev);
++	enum usb_dr_mode mode = hsotg->dr_mode;
+ 	int ret;
++
++	/* Initial hardware enable precedes dwc2_get_dr_mode(). */
++	if (mode == USB_DR_MODE_UNKNOWN)
++		mode = usb_get_dr_mode(hsotg->dev);
+ 
+ 	ret = regulator_bulk_enable(ARRAY_SIZE(hsotg->supplies),
+ 				    hsotg->supplies);
+@@ -119,11 +124,20 @@
+ 		ret = hsotg->plat->phy_init(pdev, hsotg->plat->phy_type);
+ 	} else {
+ 		ret = phy_init(hsotg->phy);
+-		if (ret == 0) {
+-			ret = phy_power_on(hsotg->phy);
+-			if (ret)
+-				phy_exit(hsotg->phy);
++		if (ret)
++			goto err_dis_clk;
++
++		if (mode == USB_DR_MODE_HOST)
++			ret = phy_set_mode(hsotg->phy, PHY_MODE_USB_HOST);
++		else if (mode == USB_DR_MODE_PERIPHERAL)
++			ret = phy_set_mode(hsotg->phy, PHY_MODE_USB_DEVICE);
++		if (ret) {
++			phy_exit(hsotg->phy);
++			goto err_dis_clk;
+ 		}
++		ret = phy_power_on(hsotg->phy);
++		if (ret)
++			phy_exit(hsotg->phy);
+ 	}
+ 
+ 	if (ret)

@@ -19,20 +19,30 @@ CONFIG_INPUT_EVDEV=y
 CONFIG_INPUT_TOUCHSCREEN=y
 CONFIG_TOUCHSCREEN_HYNITRON_CST9220=y
 # CONFIG_TOUCHSCREEN_GOODIX is not set
-# CONFIG_HID is not set
 
-# No card, USB host or LED. I2C is shared by touch and on-board sensors.
+# No card or LED. I2C is shared by touch and on-board sensors.
 # CONFIG_MMC is not set
 CONFIG_I2C=y
 CONFIG_I2C_CHARDEV=y
 CONFIG_REGULATOR=y
 CONFIG_REGULATOR_FIXED_VOLTAGE=y
-# CONFIG_USB_SUPPORT is not set
-# CONFIG_PHY_ESP32S31_USB is not set
+# Dedicated high-speed Type-C PHY, independent of the camera's GPIO33/34.
+CONFIG_USB_SUPPORT=y
+# Fixed peripheral mode; HUSB320 has no connected software role signal.
+# CONFIG_USB is not set
+CONFIG_PHY_ESP32S31_USB=y
+CONFIG_USB_DWC2=m
+CONFIG_USB_DWC2_PERIPHERAL=y
+# CONFIG_USB_DWC2_DUAL_ROLE is not set
+CONFIG_USB_GADGET=m
+CONFIG_USB_G_SERIAL=m
+# CONFIG_USB_CONFIGFS is not set
 # CONFIG_SCSI is not set
+# CONFIG_HID is not set
+# CONFIG_FAT_FS is not set
+# CONFIG_VFAT_FS is not set
 # CONFIG_NEW_LEDS is not set
 # CONFIG_EXT4_FS is not set
-# CONFIG_VFAT_FS is not set
 # CONFIG_UEVENT_HELPER is not set
 
 # The NOR window is a read-only squashfs root; NAND UBIFS is its writable

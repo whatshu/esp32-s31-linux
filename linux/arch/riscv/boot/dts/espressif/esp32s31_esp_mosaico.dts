@@ -304,3 +304,14 @@
 		};
 	};
 };
+
+/* The on-board Type-C uses the dedicated HS PHY, not GPIO33/34. */
+&usb_phy { status = "okay"; };
+
+&usb0 {
+	dr_mode = "peripheral";
+	g-rx-fifo-size = <384>;
+	g-np-tx-fifo-size = <64>;
+	g-tx-fifo-size = <128 128 16 16 16 16 16>;
+	status = "okay";
+};
