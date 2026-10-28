@@ -2,12 +2,14 @@
 
 This document tells how Linux runs on the ESP32-S31, and why the port has
 its current form. It is for developers who know the RISC-V Linux kernel and
-want to understand this SoC. All facts are from chip revision v0.0 on the
-ESP32-S31-Korvo-1 board. JTAG measurements gave most of them, because
-Espressif does not publish a technical reference manual for this chip yet.
-The port has three builds: `esp32s31` for the ESP32-S31-WROOM-3-N16R16V
-module alone, `coreboard1` for the ESP32-S31-Function-CoreBoard-1, and
-`korvo1` for the Korvo-1. The two boards use that module.
+want to understand this SoC. Unless another board is named, facts are from
+chip revision v0.0 on the ESP32-S31-Korvo-1 board. JTAG measurements gave
+most of them, because Espressif does not publish a technical reference
+manual for this chip yet.
+The port has four builds: `esp32s31` for the ESP32-S31-WROOM-3-N16R16V
+module alone, `coreboard1` for the ESP32-S31-Function-CoreBoard-1,
+`korvo1` for the Korvo-1, and `esp-mosaico` for the ESP-Mosaico CoreBoard
+V1.2.
 
 The ESP-IDF register headers (`components/soc/esp32s31/register/soc/`) are
 the best public reference for addresses and fields.
@@ -48,12 +50,13 @@ ROM -> ESP-IDF 2nd stage -> loader (hart 0) -> OpenSBI (hart 1, M) -> Linux (har
 5. OpenSBI sets up the CLIC, the timer, PMP, APM and the SBI extensions.
    Then it jumps to the kernel in S-mode.
 6. The kernel has a built-in DTB (`esp32s31.dts`,
-   `esp32s31_coreboard1.dts` or `esp32s31_korvo1.dts`). On the Korvo-1,
-   the root is the ext4 partition `/dev/mmcblk0p2` on the SD card, on the
+   `esp32s31_coreboard1.dts`, `esp32s31_korvo1.dts` or
+   `esp32s31_esp_mosaico.dts`). On the Korvo-1, the root is the ext4
+   partition `/dev/mmcblk0p2` on the SD card, on the
    Function-CoreBoard-1 p2 of the USB stick with the disk signature
    `0x45533331` (`root=PARTUUID=45533331-02` and `rootwait`). On the
-   esp32s31 board, the root is the squashfs in the flash, with a UBIFS
-   overlay.
+   esp32s31 and esp-mosaico builds, the root is the squashfs in the flash,
+   with a UBIFS overlay.
 
 ### Memory map
 
@@ -399,6 +402,55 @@ the USB transport in shared SRAM. The layout is in
   Thus the access point probably keeps the protected association of the
   board until its SA Query fails.
 
+## Display and touch
+
+### CO5300 QSPI display
+
+On ESP-Mosaico CoreBoard V1.2, Linux drives the 480x480 CO5300 panel through
+GPSPI2. The drivers are `linux/drivers/spi/spi-esp32s31.c` and
+`linux/drivers/video/fbdev/co5300fb.c`. The framebuffer is native-endian
+RGB565; the display driver sends each pixel's high byte first. Commands
+use one wire and pixel data uses four. The board assigns an 80 MHz SPI
+core clock and requests 40 MHz QSPI. The board BSP also uses 40 MHz QSPI.
+
+The display driver tracks dirty pairs of scan lines and combines up to
+eight adjacent lines per transfer. A blinking console cursor therefore
+does not resend the entire frame. Writes, fbdev drawing operations and
+deferred mmap updates all record damage. Transfers use PIO and a staging
+buffer, with a 20 ms deferred update delay.
+
+The framebuffer console, RGB565 color bars through `/dev/fb0`, partial
+writes, mmap updates and display recovery after Linux reboot have been
+checked on the board.
+
+### CST9220 touch
+
+The CST9220 driver is `linux/drivers/input/touchscreen/cst9220.c`. On
+CoreBoard V1.2 it uses the shared 400 kHz I2C bus, address `0x5a`, and
+reports coordinates from 0 to 479 on both axes through evdev. GPIO6 is the
+interrupt line, but the GPIO controller does not support interrupts yet,
+so the input device polls at a requested interval of 20 ms while open.
+
+Validation on 2026-10-28 used the kernel at `94e431d`, temporary fbdev
+targets and evdev event capture. The controller reported project
+`0x6854`, which requires each report to be acknowledged.
+
+| Check | Result |
+| --- | --- |
+| Center and four corner targets | All five contacts were within a 40-pixel radius of the drawn targets. These were manual alignment checks, not precision calibration. |
+| Horizontal and vertical swipes | Coordinate direction matched the displayed guides. |
+| Single-contact hold | A 1.560 s hold produced one activation and one release. |
+| Two contacts | Independent slots tracked both moving and stationary fingers; a stationary overlap lasted 4.480 s. |
+| Release state | All 30 activations had matching releases. At the end, no tracking slots were active and `BTN_TOUCH` was clear. |
+| Event integrity | Across 280 event frames, no coordinates were out of range, no `SYN_DROPPED` occurred and no I2C report failures were logged. |
+
+Linux suppresses unchanged input values. A test of stationary contacts
+must include the time until release, rather than requiring repeated
+coordinate events. The temporary visual test initially missed this
+interval; replaying the captured slot states confirmed the holds without
+a driver change. Five simultaneous contacts and gesture recognition
+above evdev have not been tested.
+
 ## The flash root without a card
 
 The ESP32-S31-WROOM-3-N16R16V alone has no card. Linux has no driver for the
@@ -451,16 +503,19 @@ Linux sees a standard MTD device.
   shows 64 KiB erase blocks: UBIFS needs a logical erase block of at least
   15 KiB, and UBI takes 128 bytes of each block for its headers.
 
-## The three builds
+## Build configurations
 
-The three builds share one Buildroot base
+The four builds share one Buildroot base
 (`br2-external/board/esp32s31/defconfig/common.fragment`), and
 `scripts/mkdefconfigs.sh` merges it with the fragment of the root and the
-fragment of the board. The module alone has its root in the flash
-(`flashroot.fragment`). The Korvo-1 and the Function-CoreBoard-1 have it on
-a disk, the card or a USB stick (`diskroot.fragment`). A setting is in one
-fragment only, and `make check` fails when a defconfig
-in `br2-external/configs/` differs from its fragments.
+fragment of the board. The module alone and ESP-Mosaico have their roots
+in the flash (`flashroot.fragment`). The Korvo-1 and the
+Function-CoreBoard-1 have it on a disk, the card or a USB stick
+(`diskroot.fragment`). A setting is in one fragment only, and `make check`
+fails when a defconfig in `br2-external/configs/` differs from its fragments.
+
+The table compares the original three builds. ESP-Mosaico also uses the
+flash root, with the CO5300 display and CST9220 touch drivers and `evtest`.
 
 | | Module alone | Function-CoreBoard-1 | Korvo-1 |
 | --- | --- | --- | --- |
