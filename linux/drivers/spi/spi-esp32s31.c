@@ -2,8 +2,10 @@
 /* ESP32-S31 GPSPI master. PIO, mode 0, 1/4-bit I/O and native memory operations. */
 #include <linux/bitfield.h>
 #include <linux/clk.h>
+#include <linux/delay.h>
 #include <linux/io.h>
 #include <linux/iopoll.h>
+#include <linux/ktime.h>
 #include <linux/module.h>
 #include <linux/platform_device.h>
 #include <linux/property.h>
@@ -49,6 +51,7 @@
 #define S31_SPI_CLK_GATE		0xe8
 #define S31_SPI_CLK_ENABLE	(BIT(0) | BIT(1))
 #define S31_SPI_FIFO_SIZE	64
+#define S31_SPI_POLL_BUSY_US	1000
 
 struct esp32s31_spi {
 	void __iomem *base;
@@ -268,9 +271,54 @@ static int esp32s31_spi_exec_op(struct spi_mem *mem,
 	return ret;
 }
 
+static int esp32s31_spi_poll_status(struct spi_mem *mem,
+				    const struct spi_mem_op *op, u16 mask, u16 match,
+				    unsigned long initial_delay_us,
+				    unsigned long polling_delay_us,
+				    unsigned long timeout_ms)
+{
+	struct spi_mem_op poll_op = *op;
+	const u8 *buf = op->data.buf.in;
+	ktime_t now = ktime_get();
+	ktime_t deadline = ktime_add_ms(now, timeout_ms);
+	ktime_t busy_deadline = ktime_add_us(now, S31_SPI_POLL_BUSY_US);
+	u16 status;
+	int ret;
+
+	spi_mem_adjust_op_freq(mem, &poll_op);
+	if (!esp32s31_spi_supports_op(mem, &poll_op))
+		return -EOPNOTSUPP;
+
+	/* Short NAND waits must not become whole ticks without high-res timers. */
+	if (initial_delay_us <= S31_SPI_POLL_BUSY_US)
+		udelay(initial_delay_us);
+	else
+		usleep_range(initial_delay_us, initial_delay_us + 1);
+
+	for (;;) {
+		ret = esp32s31_spi_exec_op(mem, &poll_op);
+		if (ret)
+			return ret;
+		status = op->data.nbytes == 2 ? (buf[0] << 8) | buf[1] : buf[0];
+		if ((status & mask) == match)
+			return 0;
+		now = ktime_get();
+		if (timeout_ms && ktime_compare(now, deadline) >= 0)
+			return -ETIMEDOUT;
+
+		/* Bound active polling; slow erases and faulty devices may sleep. */
+		if (ktime_compare(now, busy_deadline) < 0 &&
+		    polling_delay_us <= S31_SPI_POLL_BUSY_US)
+			udelay(polling_delay_us);
+		else
+			usleep_range(polling_delay_us, polling_delay_us + 1);
+	}
+}
+
 static const struct spi_controller_mem_ops esp32s31_spi_mem_ops = {
 	.supports_op = esp32s31_spi_supports_op,
 	.exec_op = esp32s31_spi_exec_op,
+	.poll_status = esp32s31_spi_poll_status,
 };
 
 static int esp32s31_spi_probe(struct platform_device *pdev)
