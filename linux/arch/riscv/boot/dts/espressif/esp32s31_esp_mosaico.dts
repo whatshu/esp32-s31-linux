@@ -48,10 +48,8 @@
 		clock-frequency = <20000000>;
 	};
 
-	/* GPIO IRQs are not implemented; debounce the AI button by polling. */
 	keys {
-		compatible = "gpio-keys-polled";
-		poll-interval = <50>;
+		compatible = "gpio-keys";
 
 		key-ai {
 			label = "AI";
@@ -167,7 +165,7 @@
 	};
 };
 
-/* GPIO6 is the touch interrupt; poll until the GPIO controller supports IRQs. */
+/* Touch retains its validated polling path; GPIO6 is available for a future IRQ path. */
 &i2c0 {
 	pinctrl-names = "default";
 	pinctrl-0 = <&i2c0_cfg>;

@@ -449,8 +449,9 @@ preview changes were made during this investigation.
 The CST9220 driver is `linux/drivers/input/touchscreen/cst9220.c`. On
 CoreBoard V1.2 it uses the shared 400 kHz I2C bus, address `0x5a`, and
 reports coordinates from 0 to 479 on both axes through evdev. GPIO6 is the
-interrupt line, but the GPIO controller does not support interrupts yet,
-so the input device polls at a requested interval of 20 ms while open.
+interrupt line. The touch driver retains its validated polling path at a
+requested interval of 20 ms while open; the AI button's GPIO IRQ support
+does not change the touch report protocol or timing.
 
 Validation on 2026-10-28 used the kernel at `94e431d`, temporary fbdev
 targets and evdev event capture. The controller reported project
@@ -751,7 +752,7 @@ does not have software voltage control.
 | --- | --- | --- |
 | BMI270 accelerometer and gyroscope | I2C `0x69` | `bmi270_i2c`, IIO acceleration, angular velocity and temperature |
 | BMM150 #2 and #3 | I2C `0x11` and `0x12` | `bmc150_magn_i2c`, IIO magnetic field |
-| AI button | GPIO7, active low, internal pull-up | `gpio-keys-polled`, evdev `KEY_PROG1` |
+| AI button | GPIO7, active low, internal pull-up | `gpio-keys`, evdev `KEY_PROG1`, both-edge IRQ |
 | Vibration motor | GPIO8, active high | `gpio-vibra`, evdev `FF_RUMBLE` |
 
 `S09peripherals` loads the upstream drivers after the writable root has
@@ -778,17 +779,23 @@ Read the BMI270's `in_accel_{x,y,z}_raw`, `in_anglvel_{x,y,z}_raw` and
 corresponding scale and temperature offset attributes from that device;
 do not assume that raw values share units. Mounting matrices have not
 been calibrated to the display orientation. Shared sensor interrupts on
-GPIO2 are not enabled because the GPIO controller has no IRQ support;
-this integration provides direct sysfs reads, without a background
-userspace sampler or hardware-triggered sensor buffers.
+GPIO2 are not configured in this integration. The sensor drivers provide
+direct sysfs reads, without a background userspace sampler or
+hardware-triggered sensor buffers.
 
-Use `evtest` and select `keys` to observe the AI button. Its polling and
-debounce intervals are both 50 ms, and polling runs while the input
-device is open. The motor accepts timed `FF_RUMBLE` effects through the
+Use `evtest` and select `keys` to observe the AI button. The GPIO driver
+supports rising, falling, both-edge and level interrupts through GPIO_INTR0,
+routed to the Linux hart. The button uses both edges and 50 ms software
+debounce, without periodic polling. POWER/RESET/BOOT retain their hardware
+functions. The motor accepts timed `FF_RUMBLE` effects through the
 standard evdev API. Any nonzero magnitude switches it on; this GPIO
 implementation does not provide proportional intensity control. It is
 off at probe and stops when the input device closes. Boot does not play
 an effect.
+
+The 2026-10-28 local build registers the GPIO7 AI key through gpio-keys.
+An earlier on-device kernel exposed the interrupt in /proc/interrupts;
+physical press/release events and the final image still need verification.
 
 Validation on 2026-10-28 loaded the Bosch initialization image and read
 all six BMI270 motion axes and temperature. Both BMM150 devices probe

@@ -5,7 +5,7 @@
 case "$1" in
 start)
 	status=0
-	for driver in bmi270_i2c bmc150_magn_i2c gpio-vibra gpio_keys_polled; do
+	for driver in bmi270_i2c bmc150_magn_i2c gpio-vibra gpio_keys; do
 		modprobe "$driver" || status=1
 	done
 	exit "$status"
