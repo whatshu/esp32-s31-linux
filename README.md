@@ -27,10 +27,10 @@ There are four board configurations:
 | ESP32-S31-Korvo-1 | `korvo1` | microSD card | `*-korvo1-flash.zip`, `*-korvo1-sdcard.img.xz` |
 | ESP-Mosaico CoreBoard V1.2 | `esp-mosaico` | flash | In development |
 
-ESP-Mosaico support targets CoreBoard V1.2. UART and Wi-Fi have been tested
-with the supplied `esp32s31` firmware. The local board firmware boots Linux with a flash rootfs and probes the
-CST9220 touch controller. The CO5300 QSPI framebuffer driver and display
-console pass compilation; display hardware validation is pending.
+ESP-Mosaico support targets CoreBoard V1.2. The local board firmware boots
+Linux with a flash rootfs, UART and Wi-Fi, and probes the CST9220 touch
+controller. The CO5300 QSPI display has been tested with the framebuffer
+console and RGB565 color bars through `/dev/fb0`.
 
 1. Get the files of your board from the newest
    [release](https://github.com/annoyedmilk/esp32-s31-linux/releases).
@@ -84,7 +84,8 @@ on your computer. For your own builds, put the key into
 
 ## What works
 
-The table lists the validated builds. ESP-Mosaico validation is pending.
+The table lists the original three builds. ESP-Mosaico validation is
+described above; its other peripherals are still being brought up.
 
 | | `esp32s31` | `coreboard1` | `korvo1` |
 | --- | --- | --- | --- |

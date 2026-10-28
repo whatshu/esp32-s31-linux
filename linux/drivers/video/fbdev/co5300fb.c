@@ -14,6 +14,8 @@
 #define CO5300_HEIGHT		480
 #define CO5300_STRIDE		(CO5300_WIDTH * 2)
 #define CO5300_SIZE		(CO5300_STRIDE * CO5300_HEIGHT)
+#define CO5300_UPDATE_LINES	2
+#define CO5300_UPDATE_SIZE	(CO5300_STRIDE * CO5300_UPDATE_LINES)
 #define CO5300_WRITE_COMMAND	0x02
 #define CO5300_WRITE_PIXELS	0x32
 #define CO5300_COLUMN_ADDRESS	0x2a
@@ -31,7 +33,7 @@ struct co5300fb {
 	struct fb_deferred_io defio;
 	u32 palette[16];
 	u8 header[4];
-	u8 data[CO5300_STRIDE];
+	u8 data[CO5300_UPDATE_SIZE];
 };
 
 /* The opcode and register address stay on one wire, pixels use four. */
@@ -110,18 +112,21 @@ static int co5300fb_update(struct fb_info *info)
 	ret = co5300fb_window(par, CO5300_COLUMN_ADDRESS, 0, CO5300_WIDTH - 1);
 	if (ret)
 		goto out;
-	for (y = 0; y < CO5300_HEIGHT; y++) {
-		ret = co5300fb_window(par, CO5300_PAGE_ADDRESS, y, y);
+	/* This panel accepts page windows covering pairs of scan lines. */
+	for (y = 0; y < CO5300_HEIGHT; y += CO5300_UPDATE_LINES) {
+		ret = co5300fb_window(par, CO5300_PAGE_ADDRESS, y,
+				      y + CO5300_UPDATE_LINES - 1);
 		if (ret)
 			break;
 		/* fbdev exposes native-endian RGB565; the panel takes MSB first. */
-		for (x = 0; x < CO5300_WIDTH; x++) {
+		for (x = 0; x < CO5300_WIDTH * CO5300_UPDATE_LINES; x++) {
 			u16 pixel = fb[y * CO5300_WIDTH + x];
 
 			par->data[x * 2] = pixel >> 8;
 			par->data[x * 2 + 1] = pixel;
 		}
-		ret = co5300fb_transfer(par, CO5300_MEMORY_WRITE, CO5300_STRIDE, true);
+		ret = co5300fb_transfer(par, CO5300_MEMORY_WRITE,
+				       CO5300_UPDATE_SIZE, true);
 		if (ret)
 			break;
 	}
