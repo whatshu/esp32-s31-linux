@@ -426,6 +426,24 @@ updates measured 11.132–11.229 FPS at 40 MHz. Camera capture confirmed the
 test bars were displayed. A five-second idle sample used about 0.8% CPU;
 the touch device was closed during that sample.
 
+**Known issue (2026-10-28): camera preview tearing.** Moving objects show
+severe tearing in the temporary preview on CoreBoard V1.2 with CameraBoard
+V1.4. The program converts 640x480 UYVY capture to a centered 480x360
+RGB565 image. Preview runs at approximately 10 FPS, with each display
+update taking about 63 ms. The 360-line image is sent as 45 blocks of
+eight lines while the panel continues scanning its display RAM.
+
+The official
+[BSP enables TE synchronization on GPIO43](https://github.com/esp-mosaico/esp-mosaico-bsp/blob/7cbfb390638dcb93522fc3cde094b2d43cf907c2/components/esp-mosaico-bsp/onboard/display.c#L398).
+The Linux panel driver and device tree do not implement that path.
+`fsync()` waits for deferred framebuffer work to finish; it does not
+synchronize updates with panel scanning. Missing scan synchronization and
+the long transfer time are the leading explanation, pending a controlled
+comparison. Buffer ownership was reviewed without finding premature
+reuse, but raw capture and displayed frames have not yet been compared to
+exclude a capture-side contribution. The issue remains open; no driver or
+preview changes were made during this investigation.
+
 ### CST9220 touch
 
 The CST9220 driver is `linux/drivers/input/touchscreen/cst9220.c`. On
