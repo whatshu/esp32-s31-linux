@@ -280,20 +280,27 @@ static struct clk_hw *esp32s31_spi_register(struct esp32s31_clk *ec)
 
 	hw = devm_clk_hw_register_mux_parent_data_table(ec->dev, "spi2-sel",
 							src, ARRAY_SIZE(src),
-							CLK_SET_RATE_NO_REPARENT,
-							reg, 4, 2, 0, NULL,
+							0, reg, 4, 2, 0, NULL,
 							&ec->lock);
 	if (IS_ERR(hw))
 		return hw;
 
 	/* Both the high-speed and master gates are needed for transfers. */
 	hw = devm_clk_hw_register_gate_parent_hw(ec->dev, "spi2-hs", hw,
-						  0, reg, 6, 0, &ec->lock);
+						  CLK_SET_RATE_PARENT, reg, 6, 0,
+						  &ec->lock);
+	if (IS_ERR(hw))
+		return hw;
+
+	hw = devm_clk_hw_register_divider_parent_hw(ec->dev, "spi2-hs-div", hw,
+						    CLK_SET_RATE_PARENT, reg,
+						    7, 8, 0, &ec->lock);
 	if (IS_ERR(hw))
 		return hw;
 
 	hw = devm_clk_hw_register_divider_parent_hw(ec->dev, "spi2-div", hw,
-						    0, reg, 15, 8, 0, &ec->lock);
+						    CLK_SET_RATE_PARENT, reg,
+						    15, 8, 0, &ec->lock);
 	if (IS_ERR(hw))
 		return hw;
 
