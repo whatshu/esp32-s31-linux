@@ -5,7 +5,7 @@ Add the GPSPI master driver to the SPI configuration and build.
 diff --git a/drivers/spi/Kconfig b/drivers/spi/Kconfig
 --- a/drivers/spi/Kconfig
 +++ b/drivers/spi/Kconfig
-@@ -404,6 +404,18 @@
+@@ -404,6 +404,19 @@
  	  This enables using the Cirrus EP93xx SPI controller in master
  	  mode.
  
@@ -15,8 +15,9 @@ diff --git a/drivers/spi/Kconfig b/drivers/spi/Kconfig
 +	depends on OF && GPIOLIB
 +	help
 +	  Say Y here to use the ESP32-S31 GPSPI controller in master mode.
-+	  This driver uses PIO transfers and GPIO chip selects. It supports
-+	  mode 0, single-bit reads and single-bit or quad-bit writes.
++	  This driver uses PIO transfers and native or GPIO chip selects.
++	  It supports mode 0, single-bit or quad-bit reads and writes, and
++	  native SPI memory operations.
 +
 +	  To compile this driver as a module, choose M here: the module
 +	  will be called spi-esp32s31.
