@@ -1,0 +1,63 @@
+From: whatshu <shussm@qq.com>
+Subject: [PATCH] ASoC, dmaengine: add ESP32-S31 standard I2S and cyclic DMA
+
+Wire the local CPU DAI and AHB DMA drivers. Use the upstream ES8311 codec
+and simple-card machine driver for board-specific routing.
+
+Signed-off-by: whatshu <shussm@qq.com>
+---
+diff --git a/drivers/dma/Kconfig b/drivers/dma/Kconfig
+--- a/drivers/dma/Kconfig
++++ b/drivers/dma/Kconfig
+@@ -31,6 +31,18 @@
+ 
+ 
+ if DMADEVICES
++
++config ESP32S31_AHB_DMA
++	tristate "ESP32-S31 AHB cyclic peripheral DMA"
++	depends on SOC_ESP32S31 || COMPILE_TEST
++	depends on OF && HAS_IOMEM
++	select DMA_ENGINE
++	select DMA_VIRTUAL_CHANNELS
++	help
++	  Cyclic transfers for the five AHB receive/transmit channel pairs.
++	  Linked descriptors and audio buffers use coherent SRAM.
++	  Only cyclic peripheral transfers are supported.
++	  To compile this driver as a module, choose M here.
+ 
+ config ESP32S31_AXI_DMA
+ 	tristate "ESP32-S31 AXI receive DMA"
+diff --git a/drivers/dma/Makefile b/drivers/dma/Makefile
+--- a/drivers/dma/Makefile
++++ b/drivers/dma/Makefile
+@@ -4,6 +4,7 @@
+ subdir-ccflags-$(CONFIG_DMADEVICES_VDEBUG) += -DVERBOSE_DEBUG
+ 
+ #core
++obj-$(CONFIG_ESP32S31_AHB_DMA) += esp32s31-ahb-dma.o
+ obj-$(CONFIG_ESP32S31_AXI_DMA) += esp32s31-axi-dma.o
+ obj-$(CONFIG_DMA_ENGINE) += dmaengine.o
+ obj-$(CONFIG_DMA_VIRTUAL_CHANNELS) += virt-dma.o
+diff --git a/sound/soc/Kconfig b/sound/soc/Kconfig
+--- a/sound/soc/Kconfig
++++ b/sound/soc/Kconfig
+@@ -110,6 +110,7 @@
+ source "sound/soc/bcm/Kconfig"
+ source "sound/soc/cirrus/Kconfig"
+ source "sound/soc/dwc/Kconfig"
++source "sound/soc/espressif/Kconfig"
+ source "sound/soc/fsl/Kconfig"
+ source "sound/soc/google/Kconfig"
+ source "sound/soc/hisilicon/Kconfig"
+diff --git a/sound/soc/Makefile b/sound/soc/Makefile
+--- a/sound/soc/Makefile
++++ b/sound/soc/Makefile
+@@ -52,6 +52,7 @@
+ obj-$(CONFIG_SND_SOC)	+= bcm/
+ obj-$(CONFIG_SND_SOC)	+= cirrus/
+ obj-$(CONFIG_SND_SOC)	+= dwc/
++obj-$(CONFIG_SND_SOC)	+= espressif/
+ obj-$(CONFIG_SND_SOC)	+= fsl/
+ obj-$(CONFIG_SND_SOC)	+= google/
+ obj-$(CONFIG_SND_SOC)	+= hisilicon/

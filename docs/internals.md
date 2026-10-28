@@ -815,9 +815,8 @@ is instantiated. TP4057 controls charging and the red/green charge LED
 without MCU status signals. TLV62569, SY7088 and HE9073A33 provide the
 fixed power rails; their presence does not imply a programmable bus
 interface. The SAM8108 power latch remains hardware-controlled; Linux
-keeps the existing SBI shutdown path. ES8311 responds at `0x19`, but
-an ESP32-S31 I2S/ALSA path and speaker playback remain unimplemented.
-No speaker playback was performed during this work.
+keeps the existing SBI shutdown path. ES8311 responds at `0x19`; the new
+ASoC path is described below. No speaker playback was performed.
 
 ### Native Type-C USB
 
@@ -849,6 +848,76 @@ and before power-on, so peripheral mode removes host pull-downs. All seven
 endpoint TX FIFO sizes are explicit: RX 384 words, EP0 TX 64, remaining
 TX FIFOs 128/128/16/16/16/16/16, totaling 784 of 896 words. Gadget buffer
 and descriptor DMA remain disabled; USB throughput has not been measured.
+
+### I2S and ES8311 audio
+
+The official BSP uses I2S0 as clock provider and ES8311 as clock consumer,
+with Philips I2S, stereo 16-bit slots and MCLK at 256 times the sample rate.
+The Linux implementation follows those connections:
+
+| Signal | CoreBoard V1.2 GPIO |
+| --- | --- |
+| MCLK | 54 |
+| BCLK | 37 |
+| WS | 49 |
+| MCU data out / codec data in | 52 |
+| MCU data in / codec data out | 40 |
+| NS4150B amplifier enable | 45, active high |
+
+The CPU DAI is `linux/sound/soc/espressif/esp32s31-i2s.c`. A simple-audio-card
+joins it to the upstream ES8311 codec at I2C `0x19` and the GPIO-controlled
+simple amplifier. The initial DAI supports stereo S16_LE at standard rates
+from 8 to 48 kHz, with **one direction at a time** because RX and TX share
+clock pads. Simultaneous recording and playback returns `EBUSY`.
+
+The fractional MCLK divider uses the 40 MHz crystal, with the ordered
+ESP-IDF workaround for the divider erratum. RX and TX use equal dividers;
+the output pad takes TX MCLK. The DAI holds MCLK while a PCM device is open;
+the codec also controls its clock reference through DAPM. The NS4150B
+enable belongs to the playback route and starts low.
+
+`linux/drivers/dma/esp32s31-ahb-dma.c` supplies cyclic AHB DMA. I2S uses TX
+channel 0 and RX channel 0 (DMA cells 5 and 0), peripheral request 1. Each
+direction has at most 8 KiB of PCM buffers, with 512 to 4032-byte periods.
+Descriptors and PCM buffers use coherent SRAM. DMA moves the samples;
+the CPU handles period interrupts and ALSA buffer accounting. Termination
+masks interrupts and resets the channel; descriptor release waits for
+callback synchronization.
+
+`S12audio` loads modules without starting a stream. Discover the card and
+controls before setting gain or starting recording:
+
+```sh
+cat /proc/asound/cards
+arecord -l
+aplay -l
+amixer -c 0 scontrols
+```
+
+A capture-only transport check, once the card has probed, is:
+
+```sh
+arecord -D hw:0,0 -t raw -f S16_LE -c 2 -r 16000 -d 3 /tmp/microphone.raw
+wc -c /tmp/microphone.raw
+```
+
+The expected payload is 192000 bytes. File size alone does not validate the
+microphone signal: also check samples, elapsed time, DMA errors and xruns.
+Input routing and gains depend on the enumerated codec controls. Speaker
+testing is reserved for the user; begin at low codec volume with a short
+known recording after inspecting the control names. No boot service plays
+sound.
+
+### USB, GPIO IRQ and audio validation status
+
+The 2026-10-28 local build passes compilation, zero-fuzz patch application,
+new binding validation and strict checkpatch. An earlier on-device kernel
+registered the GPIO7 AI interrupt and DWC2 UDC. AI press/release events,
+actual PC USB enumeration, the final FIFO configuration and audio DMA
+capture still require validation on the updated image. The board stopped
+responding after the experimental USB role switch; software UART and ROM
+probes could not recover it. No audio stream has been run. The motor's
+150 ms effect reached evdev; physical vibration needs user confirmation.
 
 ### BQ27220 battery gauge
 

@@ -39,7 +39,8 @@ and [display and touch](docs/internals.md#display-and-touch) for those drivers.
 See [camera](docs/internals.md#esp-mosaico-camera) for module handling and limits.
 The board also exposes the BMI270 IMU and two BMM150 magnetometers through
 IIO, an interrupt-driven AI button and a GPIO vibrator. Native Type-C CDC
-ACM support is implemented, with final hardware validation pending. See
+ACM and ES8311/I2S DMA audio support are implemented, with final hardware
+validation pending. See
 [on-board peripherals](docs/internals.md#esp-mosaico-on-board-peripherals)
 for their interfaces and current limitations.
 
@@ -138,8 +139,9 @@ Notes:
   soft-float.
 - With WPA3-SAE, the first connection can fail. `wpa_supplicant` tries again.
 - `hcitool lescan` fails. Use `bluetoothctl` and `scan le`.
-- There is no audio driver. Camera support is limited to ESP-Mosaico's
-  left-slot CameraBoard V1.4 with SC101IOT.
+- Audio bring-up targets ESP-Mosaico's ES8311; hardware validation is
+  pending. Camera support is limited to its left-slot CameraBoard V1.4
+  with SC101IOT.
 
 ## Performance
 

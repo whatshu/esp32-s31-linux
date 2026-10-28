@@ -7,7 +7,7 @@ Add their driver to the clk Kconfig and Makefile.
 diff --git a/drivers/clk/Kconfig b/drivers/clk/Kconfig
 --- a/drivers/clk/Kconfig
 +++ b/drivers/clk/Kconfig
-@@ -233,6 +233,20 @@
+@@ -233,6 +233,21 @@
  	select REGMAP_MMIO
  	help
  	  This driver supports the SoC clocks on the Cirrus Logic ep93xx.
@@ -19,6 +19,7 @@ diff --git a/drivers/clk/Kconfig b/drivers/clk/Kconfig
 +	select MFD_SYSCON
 +	select REGMAP_MMIO
 +	select RESET_CONTROLLER
++	select RATIONAL
 +	default SOC_ESP32S31
 +	help
 +	  This driver supports the clocks and resets of the Espressif
