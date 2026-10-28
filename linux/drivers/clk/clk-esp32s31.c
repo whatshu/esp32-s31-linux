@@ -286,6 +286,12 @@ static struct clk_hw *esp32s31_spi_register(struct esp32s31_clk *ec)
 	if (IS_ERR(hw))
 		return hw;
 
+	/* Both the high-speed and master gates are needed for transfers. */
+	hw = devm_clk_hw_register_gate_parent_hw(ec->dev, "spi2-hs", hw,
+						  0, reg, 6, 0, &ec->lock);
+	if (IS_ERR(hw))
+		return hw;
+
 	hw = devm_clk_hw_register_divider_parent_hw(ec->dev, "spi2-div", hw,
 						    0, reg, 15, 8, 0, &ec->lock);
 	if (IS_ERR(hw))
@@ -364,9 +370,16 @@ static int esp32s31_hp_init(struct esp32s31_clk *ec)
 						    ec->base + HP_SDIO_HOST_CTRL0,
 						    HP_SDIO_LS_CLK_EN, 0,
 						    &ec->lock);
+	/* The register interface needs the system gate as well as APB. */
+	hw = devm_clk_hw_register_gate_parent_hw(ec->dev, "spi2-sys",
+						 hws[ESP32S31_CLK_APB], 0,
+						 ec->base + HP_SPI2_CTRL0,
+						 0, 0, &ec->lock);
+	if (IS_ERR(hw))
+		return PTR_ERR(hw);
 	hws[ESP32S31_CLK_SPI2_APB] =
 		devm_clk_hw_register_gate_parent_hw(ec->dev, "spi2-apb",
-						    hws[ESP32S31_CLK_APB], 0,
+						    hw, 0,
 						    ec->base + HP_SPI2_CTRL0,
 						    1, 0, &ec->lock);
 	hws[ESP32S31_CLK_SPI2] = esp32s31_spi_register(ec);
