@@ -37,6 +37,10 @@ erases both NAND partitions. Boot never formats NAND automatically. See
 [internals](docs/internals.md#esp-mosaico-nand-storage) for storage details
 and [display and touch](docs/internals.md#display-and-touch) for those drivers.
 See [camera](docs/internals.md#esp-mosaico-camera) for module handling and limits.
+The board also exposes the BMI270 IMU and two BMM150 magnetometers through
+IIO, an AI button and a GPIO vibrator. See
+[on-board peripherals](docs/internals.md#esp-mosaico-on-board-peripherals)
+for their interfaces and current limitations.
 
 1. Get the files of your board from the newest
    [release](https://github.com/annoyedmilk/esp32-s31-linux/releases).

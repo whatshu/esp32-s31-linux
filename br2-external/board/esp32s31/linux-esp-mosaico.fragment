@@ -21,7 +21,7 @@ CONFIG_TOUCHSCREEN_HYNITRON_CST9220=y
 # CONFIG_TOUCHSCREEN_GOODIX is not set
 # CONFIG_HID is not set
 
-# No card, USB host or LED. The shared I2C bus carries the touch controller.
+# No card, USB host or LED. I2C is shared by touch and on-board sensors.
 # CONFIG_MMC is not set
 CONFIG_I2C=y
 CONFIG_I2C_CHARDEV=y
@@ -78,3 +78,12 @@ CONFIG_VIDEO_ESP_MOSAICO_CAMERA_MODULE=m
 # Orderly reboot into the ROM UART/USB downloader.
 CONFIG_POWER_RESET=y
 CONFIG_POWER_RESET_ESP32S31_MODE=y
+
+# On-board sensors and the GPIO-switched motor. Firmware is in the rootfs.
+CONFIG_IIO=m
+CONFIG_BMI270_I2C=m
+CONFIG_BMC150_MAGN_I2C=m
+CONFIG_INPUT_MISC=y
+CONFIG_INPUT_GPIO_VIBRA=m
+CONFIG_INPUT_KEYBOARD=y
+CONFIG_KEYBOARD_GPIO_POLLED=m

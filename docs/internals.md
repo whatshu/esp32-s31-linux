@@ -737,7 +737,82 @@ Linux 7.3's SPI-NAND and RISC-V implementations supply the kernel-side
 contracts. Reference checkouts and downloaded datasheets stay in ignored
 `vendor/` or `build/` directories.
 
-## ESP-Mosaico battery gauge
+## ESP-Mosaico on-board peripherals
+
+The CoreBoard V1.2 wiring follows the official
+[schematic](https://dl.espressif.com/AE/Mosaico/SCH_SCH_ESP-Mosaico_CoreBoard_V1_2_1_2026-09-24.pdf)
+and the [BSP pin definitions](https://github.com/esp-mosaico/esp-mosaico-bsp/blob/7cbfb390638dcb93522fc3cde094b2d43cf907c2/components/esp-mosaico-bsp/include/bsp/esp_mosaico.h).
+The sensors use I2C0 on GPIO56/GPIO3 at 400 kHz. Their supplies are the
+always-on MCU 3.3 V rail, upstream of the GPIO60 peripheral switch. The
+motor uses VDD directly through its GPIO8-controlled MOSFET; its supply
+does not have software voltage control.
+
+| Device | Connection | Linux interface |
+| --- | --- | --- |
+| BMI270 accelerometer and gyroscope | I2C `0x69` | `bmi270_i2c`, IIO acceleration, angular velocity and temperature |
+| BMM150 #2 and #3 | I2C `0x11` and `0x12` | `bmc150_magn_i2c`, IIO magnetic field |
+| AI button | GPIO7, active low, internal pull-up | `gpio-keys-polled`, evdev `KEY_PROG1` |
+| Vibration motor | GPIO8, active high | `gpio-vibra`, evdev `FF_RUMBLE` |
+
+`S09peripherals` loads the upstream drivers after the writable root has
+mounted. The `bmi270-firmware` package extracts the standard 8192-byte
+initialization image from the pinned Bosch SensorAPI source, checks its
+SHA256 and installs it as `/lib/firmware/bmi270-init-data.fw`, together
+with its BSD-3-Clause license. There is no firmware download at boot.
+The BMM150 I2C patch preserves the client name when the non-deprecated
+device-tree compatible has no legacy I2C ID, so its IIO name is available
+for device discovery.
+
+Find IIO devices by their name and their parent I2C address; device
+numbers depend on probe order. For example:
+
+```sh
+for d in /sys/bus/iio/devices/iio:device*; do
+    echo "$d: $(cat "$d/name")"
+    readlink -f "$d"
+done
+```
+
+Read the BMI270's `in_accel_{x,y,z}_raw`, `in_anglvel_{x,y,z}_raw` and
+`in_temp_raw` attributes, or a BMM150's `in_magn_{x,y,z}_raw`. Apply the
+corresponding scale and temperature offset attributes from that device;
+do not assume that raw values share units. Mounting matrices have not
+been calibrated to the display orientation. Shared sensor interrupts on
+GPIO2 are not enabled because the GPIO controller has no IRQ support;
+this integration provides direct sysfs reads, without a background
+userspace sampler or hardware-triggered sensor buffers.
+
+Use `evtest` and select `keys` to observe the AI button. Its polling and
+debounce intervals are both 50 ms, and polling runs while the input
+device is open. The motor accepts timed `FF_RUMBLE` effects through the
+standard evdev API. Any nonzero magnitude switches it on; this GPIO
+implementation does not provide proportional intensity control. It is
+off at probe and stops when the input device closes. Boot does not play
+an effect.
+
+Validation on 2026-10-28 loaded the Bosch initialization image and read
+all six BMI270 motion axes and temperature. Both BMM150 devices probe
+and return samples. **Known limitation:** address `0x12` repeatedly
+returns `-2147483648` for Y. This is the driver's overflow sentinel,
+not a usable magnetic-field measurement. The other five magnetic axes
+return finite values. The source of that overflow has not been
+determined, and compass accuracy is not validated. A temporary evdev
+program submitted and stopped a 150 ms motor effect successfully; that
+checks the software path, not a measured motor amplitude. A five-second
+idle sample used approximately 0.6% CPU with the preview stopped and
+input devices closed.
+
+Several power parts operate autonomously. The HUSB320 has its SCL/OUT2
+and SDA/OUT1 pins unconnected in this schematic, so no I2C Type-C driver
+is instantiated. TP4057 controls charging and the red/green charge LED
+without MCU status signals. TLV62569, SY7088 and HE9073A33 provide the
+fixed power rails; their presence does not imply a programmable bus
+interface. The SAM8108 power latch remains hardware-controlled; Linux
+keeps the existing SBI shutdown path. ES8311 responds at `0x19`, but
+an ESP32-S31 I2S/ALSA path and speaker playback remain unimplemented.
+No speaker playback was performed during this work.
+
+### BQ27220 battery gauge
 
 **Known issue (2026-10-28): BQ27220 does not respond at I2C address
 `0x55` on the tested CoreBoard V1.2.** The internal battery is connected
