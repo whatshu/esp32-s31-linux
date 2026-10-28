@@ -737,6 +737,40 @@ Linux 7.3's SPI-NAND and RISC-V implementations supply the kernel-side
 contracts. Reference checkouts and downloaded datasheets stay in ignored
 `vendor/` or `build/` directories.
 
+## ESP-Mosaico battery gauge
+
+**Known issue (2026-10-28): BQ27220 does not respond at I2C address
+`0x55` on the tested CoreBoard V1.2.** The internal battery is connected
+and USB power is attached; the user reports that the battery is charging.
+The cause of the missing response has not been established.
+
+The official [BSP battery initialization](https://github.com/esp-mosaico/esp-mosaico-bsp/blob/7cbfb390638dcb93522fc3cde094b2d43cf907c2/components/esp-mosaico-bsp/onboard/battery.c)
+uses the shared 400 kHz I2C bus on GPIO56 (SDA) and GPIO3 (SCL). Its
+[BQ27220 component](https://github.com/espressif/esp-iot-solution/blob/1608d9c922c992986c285fd753ef15ecbbad3cde/components/sensors/battery_fuel_gauge/bq27220/bq27220.c)
+first requests the device number: write little-endian `0x0001` to control
+register `0x00`, wait 15 ms, then read two bytes from MAC data register
+`0x40`. The expected device number is `0x0220`.
+
+The equivalent Linux transactions were repeated on the board:
+
+```sh
+i2ctransfer -y 0 w3@0x55 0x00 0x01 0x00
+usleep 15000
+i2ctransfer -y 0 w1@0x55 0x40 r2
+```
+
+Both the initial command write and the ID read return `Operation timed
+out`. A direct two-byte voltage read from register `0x08` also times out.
+On the same bus, control reads return ES8311 ID bytes `0x83`, `0x11` and
+BMI270 chip ID `0x24`. Those successful reads confirm that the shared bus
+can communicate with other devices; they do not establish why the gauge
+fails.
+
+No BQ27220 device-tree node, driver extension or automatic probe is
+enabled. The gauge was not unsealed, reset or given a battery profile.
+The BSP's 80 mAh profile is not applied to this board's 65 mAh battery.
+Revisit support only after device-number reads succeed on the hardware.
+
 ## ESP-Mosaico camera
 
 CoreBoard V1.2's left connector accepts CameraBoard V1.4 with an SC101IOT
