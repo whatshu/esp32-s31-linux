@@ -90,6 +90,8 @@
 };
 
 &spi2 {
+	assigned-clocks = <&hp_clkrst ESP32S31_CLK_SPI2>;
+	assigned-clock-rates = <80000000>;
 	pinctrl-names = "default";
 	pinctrl-0 = <&spi2_cfg>;
 	cs-gpios = <&pinctrl 50 GPIO_ACTIVE_LOW>;
@@ -98,7 +100,7 @@
 	display@0 {
 		compatible = "esp-mosaico,co5300-480x480";
 		reg = <0>;
-		spi-max-frequency = <20000000>;
+		spi-max-frequency = <40000000>;
 		spi-tx-bus-width = <4>;
 		reset-gpios = <&pinctrl 44 GPIO_ACTIVE_LOW>;
 		vdd-supply = <&vcc_3v3>;

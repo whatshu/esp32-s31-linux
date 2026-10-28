@@ -30,7 +30,10 @@ There are four board configurations:
 ESP-Mosaico support targets CoreBoard V1.2. The local board firmware boots
 Linux with a flash rootfs, UART and Wi-Fi, and probes the CST9220 touch
 controller. The CO5300 QSPI display has been tested with the framebuffer
-console and RGB565 color bars through `/dev/fb0`.
+console and RGB565 color bars through `/dev/fb0`. Updates track dirty pairs
+of scan lines and combine up to eight lines per transfer, so a blinking
+console cursor does not resend the entire frame. The QSPI clock is 40 MHz,
+as in the board BSP.
 
 1. Get the files of your board from the newest
    [release](https://github.com/annoyedmilk/esp32-s31-linux/releases).
