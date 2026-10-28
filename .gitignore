@@ -10,3 +10,4 @@ local-overlay/*
 release/
 .vscode/
 vendor/
+.serial_mcp/
