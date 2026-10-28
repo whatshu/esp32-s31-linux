@@ -649,14 +649,40 @@ display and touch paths too. Never unbind GPSPI3 while UBI or NAND swap
 is using it. Test programs, captures and migration archives stay in
 ignored build output.
 
-For serial-only development, ESP-IDF defines
-`LP_SYSTEM_REG_FORCE_DOWNLOAD_BOOT` at `0x20700008`, bit 2. A temporary
-diagnostic module can set that bit before a normal, synchronized reboot.
-After flashing, reconnect at the baud rate left by the flasher (921600
-in these tests), clear bit 2 and use the supported esptool watchdog reset.
-Then restore the host console to 115200 baud. This avoids depending on
-RTS/DTR wiring; keep the helper in ignored build output. It is not part
-of the production driver.
+### Reboot into the ROM downloader
+
+On ESP-Mosaico, `reboot bootloader` requests an orderly shutdown through
+BusyBox init. Its reboot applet only sends a signal to PID 1, so the board's
+`/sbin/reboot` wrapper first writes `bootloader` to
+`/sys/bus/platform/devices/20700008.reboot-mode/next_mode`. The kernel keeps
+that choice in RAM until its reboot notifier sets
+`LP_SYSTEM_REG_FORCE_DOWNLOAD_BOOT` (`0x20700008`, bit 2). OpenSBI then
+performs the normal system reset. No temporary module or flash write is
+needed. Ordinary `reboot` selects `normal`; poweroff does not apply the
+saved choice. Direct callers of Linux's `RESTART2` API can also pass
+`bootloader` without the wrapper.
+
+Once the UART reports `waiting for download`, close the serial monitor and
+flash with the tested esptool version, bypassing unavailable RTS/DTR lines:
+
+```sh
+esptool --chip esp32s31 -p PORT -b 921600 --before no-reset \
+    --after no-reset write-flash @flash_args
+python3 scripts/reset-from-bootloader.py --port PORT --baud 921600
+```
+
+Use the release bundle's `flash_args`, or generate it with
+`make flash-args BOARD=esp-mosaico`. Run the helper in the Python
+environment containing the tested esptool. It clears only the
+forced-download bit and resets through the watchdog, preserving the other
+LP_SYSTEM bits. Reconnect the UART console at 115200 baud. Keep 921600 for
+the reset command when the flasher left the UART at that rate; a fresh ROM
+session starts at 115200. A reset without clearing the forced-download bit
+returns to the ROM downloader.
+
+Validation checks ordinary reboot, rejection of an invalid `next_mode`,
+entry into ROM download, an esptool connection and successful return to
+Linux. The temporary UART logs stay in ignored build output.
 
 ### Execution and memory
 

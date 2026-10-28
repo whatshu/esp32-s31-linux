@@ -54,6 +54,14 @@ and [display and touch](docs/internals.md#display-and-touch) for those drivers.
 On the Korvo-1, the LCD also shows a console. Connect a USB keyboard and
 log in on `tty1`: it starts a `tmux` desktop.
 
+On ESP-Mosaico, `reboot bootloader` enters ROM download mode after an
+orderly shutdown. For bridges without reset wiring, flash with
+`--before no-reset --after no-reset`, then return to Linux with:
+
+```sh
+python3 scripts/reset-from-bootloader.py --port PORT --baud 921600
+```
+
 ### Wi-Fi
 
 ```sh

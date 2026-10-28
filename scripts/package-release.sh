@@ -72,6 +72,7 @@ stay after a reboot and after a new flash.bin.  A data partition without UBI
 (a new board, or a board from v0.4.0) is erased and formatted at the first
 boot.  To go back to the image, run flash_erase /dev/mtd1 0 0 and reboot." ;;
 esp-mosaico)
+	cp scripts/reset-from-bootloader.py "$stage/"
 	title="the ESP-Mosaico CoreBoard V1.2"
 	usage="The read-only system is in the 16 MiB NOR flash.  The 128 MiB NAND
 provides a 96 MiB writable filesystem partition and a 32 MiB swap partition.
@@ -83,7 +84,16 @@ On a new board, initialize NAND from the serial console, then reboot:
   reboot
 
 This command ERASES both NAND partitions.  Boot never formats NAND: if it
-is missing or not initialized, the system starts with a read-only root." ;;
+is missing or not initialized, the system starts with a read-only root.
+
+From a running system, reboot bootloader enters the ROM downloader after
+an orderly shutdown. Close the serial monitor, then flash and restart:
+
+  esptool --chip esp32s31 -p PORT -b 921600 --before no-reset --after no-reset write-flash @flash_args
+  python3 reset-from-bootloader.py --port PORT --baud 921600
+
+Run the reset helper in the Python environment containing esptool. Reopen
+the console at 115200 baud. These commands do not need RTS/DTR wiring." ;;
 esac
 
 cat > "$stage/FLASH.txt" <<TXT
