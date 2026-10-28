@@ -38,6 +38,7 @@
 #define HP_SYS_FREQ_CTRL0		0x0c
 #define HP_APB_FREQ_CTRL0		0x10
 #define HP_SPI2_CTRL0			0x6c
+#define HP_SPI3_CTRL0			0x70
 #define HP_RMT_CTRL0			0xbc
 #define HP_SDIO_HOST_CTRL0		0xc0
 #define HP_SDIO_LS_CLK_EN		3
@@ -262,51 +263,74 @@ static struct clk_hw *esp32s31_periph_register(struct esp32s31_clk *ec,
 }
 
 /* GPSPI has its own source mux and master divider, separate from APB. */
-static struct clk_hw *esp32s31_spi_register(struct esp32s31_clk *ec)
+struct esp32s31_spi_clks {
+	const char *names[7];
+	u16 offset;
+	u8 id;
+};
+
+static const struct esp32s31_spi_clks esp32s31_spi_clks[] = {
+	{ { "spi2-sys", "spi2-apb", "spi2-sel", "spi2-hs", "spi2-hs-div",
+	    "spi2-div", "spi2" }, HP_SPI2_CTRL0, ESP32S31_CLK_SPI2_APB },
+	{ { "spi3-sys", "spi3-apb", "spi3-sel", "spi3-hs", "spi3-hs-div",
+	    "spi3-div", "spi3" }, HP_SPI3_CTRL0, ESP32S31_CLK_SPI3_APB },
+};
+
+static int esp32s31_spi_register(struct esp32s31_clk *ec,
+				 const struct esp32s31_spi_clks *p,
+				 struct clk_hw *pll)
 {
 	struct clk_parent_data src[] = {
 		{ .fw_name = "xtal" },
 		{ .fw_name = "rc-fast" },
-		{},
+		{ .hw = pll },
 	};
-	void __iomem *reg = ec->base + HP_SPI2_CTRL0;
+	struct clk_hw **hws = ec->hws->hws;
+	void __iomem *reg = ec->base + p->offset;
 	struct clk_hw *hw;
 
-	hw = devm_clk_hw_register_fixed_factor_fwname(ec->dev, NULL, "spi-pll-f160m",
-						    "cpll", 0, 1, 2);
+	/* The register interface needs the system gate as well as APB. */
+	hw = devm_clk_hw_register_gate_parent_hw(ec->dev, p->names[0],
+						 hws[ESP32S31_CLK_APB], 0,
+						 reg, 0, 0, &ec->lock);
 	if (IS_ERR(hw))
-		return hw;
-	src[2].hw = hw;
+		return PTR_ERR(hw);
+	hws[p->id] = devm_clk_hw_register_gate_parent_hw(ec->dev, p->names[1],
+							 hw, 0, reg, 1, 0,
+							 &ec->lock);
+	if (IS_ERR(hws[p->id]))
+		return PTR_ERR(hws[p->id]);
 
-	hw = devm_clk_hw_register_mux_parent_data_table(ec->dev, "spi2-sel",
+	hw = devm_clk_hw_register_mux_parent_data_table(ec->dev, p->names[2],
 							src, ARRAY_SIZE(src),
 							0, reg, 4, 2, 0, NULL,
 							&ec->lock);
 	if (IS_ERR(hw))
-		return hw;
+		return PTR_ERR(hw);
 
 	/* Both the high-speed and master gates are needed for transfers. */
-	hw = devm_clk_hw_register_gate_parent_hw(ec->dev, "spi2-hs", hw,
-						  CLK_SET_RATE_PARENT, reg, 6, 0,
-						  &ec->lock);
+	hw = devm_clk_hw_register_gate_parent_hw(ec->dev, p->names[3], hw,
+						 CLK_SET_RATE_PARENT, reg, 6, 0,
+						 &ec->lock);
 	if (IS_ERR(hw))
-		return hw;
+		return PTR_ERR(hw);
 
-	hw = devm_clk_hw_register_divider_parent_hw(ec->dev, "spi2-hs-div", hw,
+	hw = devm_clk_hw_register_divider_parent_hw(ec->dev, p->names[4], hw,
 						    CLK_SET_RATE_PARENT, reg,
 						    7, 8, 0, &ec->lock);
 	if (IS_ERR(hw))
-		return hw;
+		return PTR_ERR(hw);
 
-	hw = devm_clk_hw_register_divider_parent_hw(ec->dev, "spi2-div", hw,
+	hw = devm_clk_hw_register_divider_parent_hw(ec->dev, p->names[5], hw,
 						    CLK_SET_RATE_PARENT, reg,
 						    15, 8, 0, &ec->lock);
 	if (IS_ERR(hw))
-		return hw;
+		return PTR_ERR(hw);
 
-	return devm_clk_hw_register_gate_parent_hw(ec->dev, "spi2", hw,
-						  CLK_SET_RATE_PARENT, reg,
-						  23, 0, &ec->lock);
+	hws[p->id + 1] = devm_clk_hw_register_gate_parent_hw(ec->dev, p->names[6],
+							     hw, CLK_SET_RATE_PARENT,
+							     reg, 23, 0, &ec->lock);
+	return PTR_ERR_OR_ZERO(hws[p->id + 1]);
 }
 
 static int esp32s31_hp_init(struct esp32s31_clk *ec)
@@ -332,6 +356,7 @@ static int esp32s31_hp_init(struct esp32s31_clk *ec)
 	struct clk_parent_data parent = {};
 	struct clk_hw *hw;
 	unsigned int i;
+	int ret;
 
 	hw = devm_clk_hw_register_mux_parent_data_table(ec->dev, "soc-root",
 							root, ARRAY_SIZE(root),
@@ -377,21 +402,15 @@ static int esp32s31_hp_init(struct esp32s31_clk *ec)
 						    ec->base + HP_SDIO_HOST_CTRL0,
 						    HP_SDIO_LS_CLK_EN, 0,
 						    &ec->lock);
-	/* The register interface needs the system gate as well as APB. */
-	hw = devm_clk_hw_register_gate_parent_hw(ec->dev, "spi2-sys",
-						 hws[ESP32S31_CLK_APB], 0,
-						 ec->base + HP_SPI2_CTRL0,
-						 0, 0, &ec->lock);
+	hw = devm_clk_hw_register_fixed_factor_fwname(ec->dev, NULL, "spi-pll-f160m",
+						      "cpll", 0, 1, 2);
 	if (IS_ERR(hw))
 		return PTR_ERR(hw);
-	hws[ESP32S31_CLK_SPI2_APB] =
-		devm_clk_hw_register_gate_parent_hw(ec->dev, "spi2-apb",
-						    hw, 0,
-						    ec->base + HP_SPI2_CTRL0,
-						    1, 0, &ec->lock);
-	hws[ESP32S31_CLK_SPI2] = esp32s31_spi_register(ec);
-	if (IS_ERR(hws[ESP32S31_CLK_SPI2]))
-		return PTR_ERR(hws[ESP32S31_CLK_SPI2]);
+	for (i = 0; i < ARRAY_SIZE(esp32s31_spi_clks); i++) {
+		ret = esp32s31_spi_register(ec, &esp32s31_spi_clks[i], hw);
+		if (ret)
+			return ret;
+	}
 	return 0;
 }
 
@@ -547,10 +566,11 @@ static const struct esp32s31_reset esp32s31_hp_resets[] = {
 	[ESP32S31_RST_I2C1] = { HP_I2C_CTRL0(1), HP_PERIPH_RST_EN },
 	[ESP32S31_RST_RMT] = { HP_RMT_CTRL0, HP_PERIPH_RST_EN },
 	[ESP32S31_RST_SPI2] = { HP_SPI2_CTRL0, BIT(2) },
+	[ESP32S31_RST_SPI3] = { HP_SPI3_CTRL0, BIT(2) },
 };
 
 static const struct esp32s31_clk_data esp32s31_hp_data = {
-	.nclks = ESP32S31_CLK_SPI2 + 1,
+	.nclks = ESP32S31_CLK_SPI3 + 1,
 	.init = esp32s31_hp_init,
 	.resets = esp32s31_hp_resets,
 	.nresets = ARRAY_SIZE(esp32s31_hp_resets),

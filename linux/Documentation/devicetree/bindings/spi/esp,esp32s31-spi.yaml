@@ -10,8 +10,8 @@ maintainers:
   - whatshu <shussm@qq.com>
 
 description:
-  GPSPI master with a 64-byte FIFO. The initial driver uses PIO, GPIO chip
-  selects, single-bit reads and single-bit or quad-bit writes in mode 0.
+  GPSPI master with a 64-byte FIFO. The driver uses PIO, native or GPIO chip
+  selects, and single-bit or quad-bit reads and writes in mode 0.
 
 allOf:
   - $ref: spi-controller.yaml#
@@ -42,6 +42,5 @@ required:
   - clocks
   - clock-names
   - resets
-  - cs-gpios
 
 unevaluatedProperties: false
