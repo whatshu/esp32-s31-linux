@@ -39,6 +39,7 @@
 #define HP_APB_FREQ_CTRL0		0x10
 #define HP_SPI2_CTRL0			0x6c
 #define HP_SPI3_CTRL0			0x70
+#define HP_SPI_MST_DIV			GENMASK(22, 15)
 #define HP_RMT_CTRL0			0xbc
 #define HP_SDIO_HOST_CTRL0		0xc0
 #define HP_SDIO_LS_CLK_EN		3
@@ -277,13 +278,12 @@ static const struct esp32s31_spi_clks esp32s31_spi_clks[] = {
 };
 
 static int esp32s31_spi_register(struct esp32s31_clk *ec,
-				 const struct esp32s31_spi_clks *p,
-				 struct clk_hw *pll)
+				 const struct esp32s31_spi_clks *p)
 {
-	struct clk_parent_data src[] = {
+	static const struct clk_parent_data src[] = {
 		{ .fw_name = "xtal" },
 		{ .fw_name = "rc-fast" },
-		{ .hw = pll },
+		{ .fw_name = "bbpll" },
 	};
 	struct clk_hw **hws = ec->hws->hws;
 	void __iomem *reg = ec->base + p->offset;
@@ -321,9 +321,18 @@ static int esp32s31_spi_register(struct esp32s31_clk *ec,
 	if (IS_ERR(hw))
 		return PTR_ERR(hw);
 
-	hw = devm_clk_hw_register_divider_parent_hw(ec->dev, p->names[5], hw,
-						    CLK_SET_RATE_PARENT, reg,
-						    15, 8, 0, &ec->lock);
+	/* ESP-IDF keeps HS at twice the master rate for input timing. */
+	clk_hw_set_rate_range(hw, 0, 160000000);
+	{
+		guard(spinlock_irqsave)(&ec->lock);
+		u32 val = readl(reg);
+
+		writel((val & ~HP_SPI_MST_DIV) |
+		       FIELD_PREP(HP_SPI_MST_DIV, 1), reg);
+	}
+	hw = devm_clk_hw_register_fixed_factor_parent_hw(ec->dev, p->names[5],
+							 hw, CLK_SET_RATE_PARENT,
+							 1, 2);
 	if (IS_ERR(hw))
 		return PTR_ERR(hw);
 
@@ -402,12 +411,8 @@ static int esp32s31_hp_init(struct esp32s31_clk *ec)
 						    ec->base + HP_SDIO_HOST_CTRL0,
 						    HP_SDIO_LS_CLK_EN, 0,
 						    &ec->lock);
-	hw = devm_clk_hw_register_fixed_factor_fwname(ec->dev, NULL, "spi-pll-f160m",
-						      "cpll", 0, 1, 2);
-	if (IS_ERR(hw))
-		return PTR_ERR(hw);
 	for (i = 0; i < ARRAY_SIZE(esp32s31_spi_clks); i++) {
-		ret = esp32s31_spi_register(ec, &esp32s31_spi_clks[i], hw);
+		ret = esp32s31_spi_register(ec, &esp32s31_spi_clks[i]);
 		if (ret)
 			return ret;
 	}
