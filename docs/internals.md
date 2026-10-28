@@ -719,6 +719,72 @@ Linux 7.3's SPI-NAND and RISC-V implementations supply the kernel-side
 contracts. Reference checkouts and downloaded datasheets stay in ignored
 `vendor/` or `build/` directories.
 
+## ESP-Mosaico camera
+
+CoreBoard V1.2's left connector accepts CameraBoard V1.4 with an SC101IOT
+sensor. The module has its own 20 MHz crystal. Linux does not generate
+XCLK or drive the connector's unused sensor reset line.
+
+| Signal | CoreBoard GPIO or I2C address |
+| --- | --- |
+| DVP D0..D7 | 16, 15, 33, 4, 14, 12, 18, 13 |
+| PCLK, HREF, VSYNC | 17, 19, 55 |
+| Sensor PWDN, active high | 48 |
+| Flash control, open drain, high means off | 34 |
+| I2C1 SDA, SCL, at 100 kHz | 0, 1 |
+| Left module descriptor EEPROM | 0x50 |
+| SC101IOT SCCB | 0x68; chip ID 0xda4a |
+
+GPIO14 is DVP D4 and must not be driven as an EEPROM address pin. The
+loader releases the native USB Serial/JTAG pads because GPIO33/34 are
+needed by the camera. UART0 remains the console and download connection.
+The shared 3.3 V rail also powers the display and touch controller, so
+removing or stopping the sensor does not switch that rail off.
+
+The `esp-mosaico-camera-module` driver polls the EEPROM every 250 ms. It
+checks the ESP camera descriptor and all three CRC16 fields, then requires
+three matching reads before creating the SC101IOT I2C client. Three missed
+or invalid reads remove the client. The disabled sensor node in the device
+tree describes the wiring without probing a missing module at boot.
+
+The receiver uses the V4L2 asynchronous subdevice interface. Sensor detach
+stops capture, synchronizes DMA callbacks, returns queued buffers with an
+error and wakes the application. The capture node stays registered while
+the module is absent; input enumeration reports no signal and STREAMON
+returns `ENOLINK`. After reconnection, applications must stop and restart
+their stream, or close and reopen the device. A two-second watchdog also
+stops a stream that no longer produces frames.
+
+`esp32s31-camera` exposes one capture mode: 640x480 UYVY, nominally 15 fps,
+with MMAP or DMA-BUF streaming. AXI receive DMA writes directly into
+scatter-gather PSRAM pages; coherent SRAM holds only the descriptor links.
+The queue uses two to four buffers. Each buffer allocates 618496 bytes,
+including a page-aligned tail beyond the 614400-byte image for samples at
+the VSYNC boundary. No frame-sized staging copy is used. Short or failed
+frames carry `V4L2_BUF_FLAG_ERROR`; applications should discard them,
+including partial frames while the sensor starts. Controls and other
+resolutions are not implemented.
+
+The Buildroot `sc101iot-firmware` package fetches the pinned official
+[ESP video components mode table](https://github.com/espressif/esp-video-components/blob/cd6194c97c43d6997eee13faf9e4c2ac4cae0c26/esp_cam_sensor/sensors/sc101iot/private_include/sc101iot_dvp_8bit_20Minput_640x480_yuv422_uyvy_15fps.h)
+and packs it into `/lib/firmware/sc101iot/vga-uyvy.bin`. The Apache-2.0 mode
+data remains separate from the GPL kernel driver. The implementation also
+follows the official
+[Mosaico BSP camera fixes](https://github.com/esp-mosaico/esp-mosaico-bsp/tree/7cbfb390638dcb93522fc3cde094b2d43cf907c2/components/mosaico_module_camera/patches):
+zero SC101IOT PCLK delay and a receiver FIFO reset before each frame.
+
+Validation on 2026-10-28 used a temporary V4L2 MMAP capture program on the
+CoreBoard V1.2 and CameraBoard V1.4. A 60-frame run had no error frames;
+a 300-frame run had one initial short frame and then 300 complete frames
+without sequence gaps, at approximately 15 fps. A saved UYVY frame was
+converted and visually checked. Unbinding the module driver during
+capture woke the application with a poll error; capture while absent
+failed with `ENOLINK`, and rebinding restored a 60-frame capture. These
+checks exercise sensor removal and recreation in software. Physical
+unplug/replug, boot with the module absent and electrical behavior during
+connector insertion still need hardware validation. Captures and temporary
+test programs stay in ignored `build/` directories.
+
 ## Build configurations
 
 The four builds share one Buildroot base

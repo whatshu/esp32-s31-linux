@@ -28,12 +28,15 @@ There are four board configurations:
 | ESP-Mosaico CoreBoard V1.2 | `esp-mosaico` | NOR system, NAND writable files | In development |
 
 ESP-Mosaico support targets CoreBoard V1.2, with UART, Wi-Fi, a CO5300
-framebuffer console and CST9220 touch input. Its 128 MiB NAND provides
-96 MiB for writable files and 32 MiB for swap, after zram. Initialize a new
-NAND with `nand-storage init ERASE` from the console, then reboot; this
+framebuffer console, CST9220 touch input and left-slot CameraBoard V1.4
+(SC101IOT, V4L2 capture at 640x480 UYVY, nominally 15 fps). Its 128 MiB NAND
+provides 96 MiB for writable files and 32 MiB for swap, after zram.
+Initialize a new NAND with `nand-storage init ERASE` from the console,
+then reboot; this
 erases both NAND partitions. Boot never formats NAND automatically. See
 [internals](docs/internals.md#esp-mosaico-nand-storage) for storage details
 and [display and touch](docs/internals.md#display-and-touch) for those drivers.
+See [camera](docs/internals.md#esp-mosaico-camera) for module handling and limits.
 
 1. Get the files of your board from the newest
    [release](https://github.com/annoyedmilk/esp32-s31-linux/releases).
@@ -130,7 +133,8 @@ Notes:
   soft-float.
 - With WPA3-SAE, the first connection can fail. `wpa_supplicant` tries again.
 - `hcitool lescan` fails. Use `bluetoothctl` and `scan le`.
-- There is no audio or camera driver.
+- There is no audio driver. Camera support is limited to ESP-Mosaico's
+  left-slot CameraBoard V1.4 with SC101IOT.
 
 ## Performance
 

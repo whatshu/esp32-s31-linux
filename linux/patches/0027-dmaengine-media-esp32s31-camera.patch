@@ -1,0 +1,96 @@
+From: whatshu <shussm@qq.com>
+Subject: [PATCH] dmaengine, media: add ESP32-S31 DVP capture and SC101IOT
+
+Wire the local AXI DMA, capture, sensor and removable-module drivers.
+
+Signed-off-by: whatshu <shussm@qq.com>
+---
+diff --git a/drivers/dma/Kconfig b/drivers/dma/Kconfig
+--- a/drivers/dma/Kconfig
++++ b/drivers/dma/Kconfig
+@@ -31,6 +31,18 @@
+ 
+ 
+ if DMADEVICES
++
++config ESP32S31_AXI_DMA
++	tristate "ESP32-S31 AXI receive DMA"
++	depends on SOC_ESP32S31 || COMPILE_TEST
++	depends on OF && HAS_IOMEM
++	select DMA_ENGINE
++	select DMA_VIRTUAL_CHANNELS
++	help
++	  DMAengine support for the three AXI peripheral receive channels.
++	  Scatter-gather data buffers may reside in PSRAM; descriptor links
++	  use coherent SRAM. Only device-to-memory transfers are supported.
++	  To compile this driver as a module, choose M here.
+ 
+ comment "DMA Devices"
+ 
+diff --git a/drivers/dma/Makefile b/drivers/dma/Makefile
+--- a/drivers/dma/Makefile
++++ b/drivers/dma/Makefile
+@@ -4,6 +4,7 @@
+ subdir-ccflags-$(CONFIG_DMADEVICES_VDEBUG) += -DVERBOSE_DEBUG
+ 
+ #core
++obj-$(CONFIG_ESP32S31_AXI_DMA) += esp32s31-axi-dma.o
+ obj-$(CONFIG_DMA_ENGINE) += dmaengine.o
+ obj-$(CONFIG_DMA_VIRTUAL_CHANNELS) += virt-dma.o
+ obj-$(CONFIG_DMA_ACPI) += acpi-dma.o
+diff --git a/drivers/media/i2c/Kconfig b/drivers/media/i2c/Kconfig
+--- a/drivers/media/i2c/Kconfig
++++ b/drivers/media/i2c/Kconfig
+@@ -1811,6 +1811,18 @@
+ 	  To compile this driver as a module, choose M here: the
+ 	  module will be called max96717.
+ 
++config VIDEO_SC101IOT
++	tristate "SmartSens SC101IOT DVP sensor"
++	depends on I2C && VIDEO_DEV && COMMON_CLK
++	select MEDIA_CONTROLLER
++	select VIDEO_V4L2_SUBDEV_API
++	select FW_LOADER
++	help
++	  SC101IOT sensor with a board-supplied 20 MHz clock. The VGA UYVY
++	  mode data is loaded from sc101iot/vga-uyvy.bin in /lib/firmware.
++	  The driver provides a single 640x480 UYVY capture mode.
++	  To compile this driver as a module, choose M here.
++
+ endmenu
+ 
+ endif # VIDEO_DEV
+diff --git a/drivers/media/i2c/Makefile b/drivers/media/i2c/Makefile
+--- a/drivers/media/i2c/Makefile
++++ b/drivers/media/i2c/Makefile
+@@ -1,6 +1,8 @@
+ # SPDX-License-Identifier: GPL-2.0
+ 
+ msp3400-objs	:=	msp3400-driver.o msp3400-kthreads.o
++
++obj-$(CONFIG_VIDEO_SC101IOT) += sc101iot.o
+ 
+ obj-$(CONFIG_SDR_MAX2175) += max2175.o
+ obj-$(CONFIG_VIDEO_AD5820) += ad5820.o
+diff --git a/drivers/media/platform/Kconfig b/drivers/media/platform/Kconfig
+--- a/drivers/media/platform/Kconfig
++++ b/drivers/media/platform/Kconfig
+@@ -73,6 +73,7 @@
+ source "drivers/media/platform/cadence/Kconfig"
+ source "drivers/media/platform/chips-media/Kconfig"
+ source "drivers/media/platform/dreamchip/Kconfig"
++source "drivers/media/platform/espressif/Kconfig"
+ source "drivers/media/platform/imagination/Kconfig"
+ source "drivers/media/platform/intel/Kconfig"
+ source "drivers/media/platform/marvell/Kconfig"
+diff --git a/drivers/media/platform/Makefile b/drivers/media/platform/Makefile
+--- a/drivers/media/platform/Makefile
++++ b/drivers/media/platform/Makefile
+@@ -16,6 +16,7 @@
+ obj-y += cadence/
+ obj-y += chips-media/
+ obj-y += dreamchip/
++obj-y += espressif/
+ obj-y += imagination/
+ obj-y += intel/
+ obj-y += marvell/

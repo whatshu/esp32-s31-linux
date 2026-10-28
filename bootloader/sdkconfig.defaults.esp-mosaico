@@ -1,4 +1,5 @@
 # ESP-Mosaico CoreBoard V1.2. Linux owns the screen and touch controller.
 CONFIG_S31_LINUX_BOARD_ESP_MOSAICO=y
 CONFIG_PARTITION_TABLE_CUSTOM_FILENAME="partitions-esp-mosaico.csv"
-CONFIG_ESP_CONSOLE_SECONDARY_USB_SERIAL_JTAG=y
+# Camera D2/flash share GPIO33/34 with native USB Serial/JTAG.
+CONFIG_ESP_CONSOLE_SECONDARY_NONE=y

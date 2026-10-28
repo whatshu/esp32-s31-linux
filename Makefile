@@ -40,10 +40,12 @@ OPENSBI_PATCHES := $(sort $(wildcard opensbi/patches/*.patch))
 # The loader config of the board: the common defaults, then the board.
 SDKCONFIG_DEFAULTS := sdkconfig.defaults;sdkconfig.defaults.$(BOARD)
 # The LCD DMA bypasses the cache: an uncached frame buffer when the LCD is on.
-FB_UNCACHED := $(shell grep -q '^CONFIG_ESP_CONSOLE_SECONDARY_NONE=y' \
-	bootloader/sdkconfig.defaults.$(BOARD) && echo 1 || echo 0)
-# The LCD uses the USB Serial/JTAG pins: the USB console only without the LCD.
-USB_CONSOLE := $(if $(filter 1,$(FB_UNCACHED)),0,1)
+FB_UNCACHED := $(if $(filter korvo1,$(BOARD)),$(shell grep -q \
+    '^CONFIG_ESP_CONSOLE_SECONDARY_NONE=y' bootloader/sdkconfig.defaults.$(BOARD) \
+    && echo 1 || echo 0),0)
+# LCD or camera data may use the USB Serial/JTAG pads; follow the board config.
+USB_CONSOLE := $(shell grep -q '^CONFIG_ESP_CONSOLE_SECONDARY_NONE=y' \
+	bootloader/sdkconfig.defaults.$(BOARD) && echo 0 || echo 1)
 
 # Buildroot runs in a container.  Its output is in a volume: virtiofs is slow.
 BR_DIR := external/buildroot
