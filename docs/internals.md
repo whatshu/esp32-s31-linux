@@ -545,3 +545,24 @@ and Bluetooth stack the same on all boards.
 | The firewall | `br2-external/board/esp32s31/rootfs-overlay-diskroot/etc/nftables.conf` |
 | Thread | `br2-external/board/esp32s31/rootfs-overlay-diskroot/usr/sbin/thread-start`, `bootloader/main/radio_coex.c` |
 | Device tree | `linux/arch/riscv/boot/dts/espressif/esp32s31.dtsi` |
+## ESP-Mosaico NAND storage
+
+CoreBoard V1.2 boots the loader, OpenSBI, kernel and squashfs system from
+16 MiB NOR. GPSPI3 connects the separate GD5F1GM7UE 128 MiB NAND using
+CLK20, D21, Q22, CS23, HOLD24 and WP25. Its partitions reserve 96 MiB for
+UBIFS and 32 MiB for mtdswap; metadata and bad-block reserves reduce usable
+capacity. Single-byte bad-block markers and reserved ECC marker pages
+keep filesystem and swap metadata separate from the factory marker.
+
+`nand-storage init ERASE [overlay.tar]` explicitly formats both partitions.
+An optional archive imports the entire writable upper layer, including
+xattrs and numeric ownership. Early init mounts initialized NAND over the
+read-only NOR root and otherwise falls back to NOR without formatting.
+Wi-Fi settings, SSH keys and other configuration are ordinary upper-layer
+files. Keep personal overlays and archives out of Git and release images.
+
+Zram is bounded to 2 MiB at priority 100. The NAND swap module resolves its
+partition by label and uses priority 10 with `reserve_marker_pages=1`.
+NAND provides backing capacity, not memory bandwidth. Linux runs from
+PSRAM; SRAM remains shared with firmware, DMA and trap code. NOR XIP is
+not implemented by this RISC-V port, and SPI NAND is not CPU-addressable.
