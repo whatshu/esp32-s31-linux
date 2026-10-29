@@ -89,10 +89,11 @@ static int esp32s31_usb_phy_init(struct phy *phy)
 			      ESP32S31_USB_LS_PARALLEL_EN |
 			      ESP32S31_USB_LS_KEEPALIVE_EN, true);
 
-	/* Host mode needs 15 kohm pull-downs on the two data lines. */
+	/* Restore the last role when the controller re-enables the PHY. */
 	esp32s31_usb_set_bits(priv->usb_ctrl,
 			      ESP32S31_USB_DM_PULLDOWN |
-			      ESP32S31_USB_DP_PULLDOWN, true);
+			      ESP32S31_USB_DP_PULLDOWN,
+			      phy_get_mode(phy) == PHY_MODE_USB_HOST);
 
 	return 0;
 }

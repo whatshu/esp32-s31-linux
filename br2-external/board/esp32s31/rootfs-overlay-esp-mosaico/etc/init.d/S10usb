@@ -1,10 +1,13 @@
 #!/bin/sh
 # SPDX-License-Identifier: MIT
-# Type-C CC detection and VBUS direction are controlled by the HUSB320.
+# HUSB320 controls VBUS; select the data role through /sys/class/usb_role/.
 
 case "$1" in
 start)
 	modprobe dwc2 || exit 1
+	modprobe usbhid || exit 1
+	modprobe hid_generic || exit 1
+	modprobe mousedev || exit 1
 	# A serial data channel; no additional login service is started.
 	modprobe g_serial use_acm=1 || exit 1
 	for udc in /sys/class/udc/*; do
