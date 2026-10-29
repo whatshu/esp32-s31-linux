@@ -612,15 +612,16 @@ BOOT to enter ROM downloading without relying on Linux USB drivers.
 In a release bundle, use `python3 flash-esp-mosaico.py --port USB_PORT
 @flash_args`. The helper refuses USB UART bridges and Linux gadgets before
 opening the port: the expected ROM USB identity is Espressif `303a:0020`.
-It flashes without RTS/DTR reset and then calls
-`reset-from-bootloader.py`. That helper clears only the forced-download bit
-and resets through the watchdog, preserving the other LP_SYSTEM bits. A
-reset without clearing the bit returns to the ROM downloader. To retry
-only the return step after a completed flash, run:
+It flashes without RTS/DTR reset. On the same esptool connection, after
+all writes are verified, it clears only the forced-download bit and resets
+through the watchdog, preserving the other LP_SYSTEM bits. Keeping one
+connection avoids reconnecting to the active USB stub. A reset without
+clearing the bit returns to the ROM downloader. A failed flash is not reset
+automatically, so its error can be inspected before retrying.
 
-```sh
-python3 scripts/reset-from-bootloader.py --port USB_PORT --baud 921600
-```
+For recovery from an idle ROM downloader, the standalone
+`reset-from-bootloader.py --port USB_PORT` helper clears the same bit and
+resets without writing flash. It is not a second step in normal flashing.
 
 The USB connection disappears during reset and Linux initializes DWC2
 again at boot. ROM USB downloading and Linux OTG own the same controller
