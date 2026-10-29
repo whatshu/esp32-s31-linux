@@ -12,7 +12,8 @@ module alone, `coreboard1` for the ESP32-S31-Function-CoreBoard-1,
 V1.2.
 
 The ESP-IDF register headers (`components/soc/esp32s31/register/soc/`) are
-the best public reference for addresses and fields.
+the best public reference for addresses and fields. Hardware test methods,
+results and outstanding checks are in [testing.md](testing.md).
 
 ## The SoC from the view of Linux
 
@@ -419,59 +420,25 @@ does not resend the entire frame. Writes, fbdev drawing operations and
 deferred mmap updates all record damage. Transfers use PIO and a staging
 buffer, with a 20 ms deferred update delay.
 
-The framebuffer console, RGB565 color bars through `/dev/fb0`, partial
-writes, mmap updates and display recovery after Linux reboot have been
-checked on the board. After the BBPLL correction, 90 synchronous full-frame
-updates measured 11.132–11.229 FPS at 40 MHz. Camera capture confirmed the
-test bars were displayed. A five-second idle sample used about 0.8% CPU;
-the touch device was closed during that sample.
-
-**Known issue (2026-10-28): camera preview tearing.** Moving objects show
-severe tearing in the temporary preview on CoreBoard V1.2 with CameraBoard
-V1.4. The program converts 640x480 UYVY capture to a centered 480x360
-RGB565 image. Preview runs at approximately 10 FPS, with each display
-update taking about 63 ms. The 360-line image is sent as 45 blocks of
-eight lines while the panel continues scanning its display RAM.
-
-The official
-[BSP enables TE synchronization on GPIO43](https://github.com/esp-mosaico/esp-mosaico-bsp/blob/7cbfb390638dcb93522fc3cde094b2d43cf907c2/components/esp-mosaico-bsp/onboard/display.c#L398).
-The Linux panel driver and device tree do not implement that path.
-`fsync()` waits for deferred framebuffer work to finish; it does not
-synchronize updates with panel scanning. Missing scan synchronization and
-the long transfer time are the leading explanation, pending a controlled
-comparison. Buffer ownership was reviewed without finding premature
-reuse, but raw capture and displayed frames have not yet been compared to
-exclude a capture-side contribution. The issue remains open; no driver or
-preview changes were made during this investigation.
+Camera preview has a known tearing issue. The driver does not use the
+panel's TE signal on GPIO43, which the official
+[BSP uses for scan synchronization](https://github.com/esp-mosaico/esp-mosaico-bsp/blob/7cbfb390638dcb93522fc3cde094b2d43cf907c2/components/esp-mosaico-bsp/onboard/display.c#L398).
+`fsync()` waits for framebuffer work to finish, without synchronizing to
+the panel scan. See the [validation record](testing.md#display) for
+measurements and the remaining capture-side check.
 
 ### CST9220 touch
 
 The CST9220 driver is `linux/drivers/input/touchscreen/cst9220.c`. On
 CoreBoard V1.2 it uses the shared 400 kHz I2C bus, address `0x5a`, and
 reports coordinates from 0 to 479 on both axes through evdev. GPIO6 is the
-interrupt line. The touch driver retains its validated polling path at a
-requested interval of 20 ms while open; the AI button's GPIO IRQ support
-does not change the touch report protocol or timing.
+interrupt line. The touch driver polls at a requested interval of 20 ms
+while open; the AI button's GPIO IRQ support does not change the touch
+report protocol or timing.
 
-Validation on 2026-10-28 used the kernel at `94e431d`, temporary fbdev
-targets and evdev event capture. The controller reported project
-`0x6854`, which requires each report to be acknowledged.
-
-| Check | Result |
-| --- | --- |
-| Center and four corner targets | All five contacts were within a 40-pixel radius of the drawn targets. These were manual alignment checks, not precision calibration. |
-| Horizontal and vertical swipes | Coordinate direction matched the displayed guides. |
-| Single-contact hold | A 1.560 s hold produced one activation and one release. |
-| Two contacts | Independent slots tracked both moving and stationary fingers; a stationary overlap lasted 4.480 s. |
-| Release state | All 30 activations had matching releases. At the end, no tracking slots were active and `BTN_TOUCH` was clear. |
-| Event integrity | Across 280 event frames, no coordinates were out of range, no `SYN_DROPPED` occurred and no I2C report failures were logged. |
-
-Linux suppresses unchanged input values. A test of stationary contacts
-must include the time until release, rather than requiring repeated
-coordinate events. The temporary visual test initially missed this
-interval; replaying the captured slot states confirmed the holds without
-a driver change. Five simultaneous contacts and gesture recognition
-above evdev have not been tested.
+The controller on this board reports project `0x6854`, which requires
+acknowledging each report. The driver preserves contact slots until release;
+unchanged coordinates do not produce repeated evdev values.
 
 ## The flash root without a card
 
@@ -565,11 +532,7 @@ The device tree supplies BBPLL separately to the clock provider. As in
 ESP-IDF, the master divider stays at two, and the high-speed clock is
 limited to 160 MHz. A requested 80 MHz master clock therefore uses
 BBPLL / 3 / 2; the SPI counter divides it by two for 40 MHz on the wire.
-The earlier 160 MHz source model overclocked transfers: requesting
-40 MHz returned a shifted NAND ID. Reading the same ID with the corrected
-dividers returns `c8 91`. Changing only the master-to-HS ratio did not
-fix the ID; both the source rate and divider constraints are required.
-GPSPI2 uses the same corrected clock model.
+GPSPI2 uses the same clock model.
 
 The controller also provides native status polling. This kernel uses
 100 Hz ticks without high-resolution timers: a short `usleep_range()`
@@ -619,55 +582,6 @@ layout. The resulting 32 MiB physical partition provides 28,644 KiB of
 swap, after page reservations and translation spares. Do not run
 `mkswap` on a raw `mtdblock` device or use a UBIFS swap file.
 
-### Storage validation
-
-Validation uses incompressible data rather than zero-filled files.
-The initial generic SPI path measured 0.183 MiB/s write with fsync and
-0.255 MiB/s cold read with byte verification. Native memory operations
-and bounded status polling removed the allocation/phase overhead and
-tick-sized waits. Earlier tests labelled 20 MHz predate the BBPLL
-correction and must not be treated as calibrated frequency comparisons.
-
-On 2026-10-28, the final kernel at the corrected 40 MHz passed:
-
-| Check | Result |
-| --- | --- |
-| 4 MiB incompressible UBIFS write with fsync, three runs | 1.422–1.627 MiB/s; median 1.435 MiB/s |
-| Cold read and byte verification of each file | 2.267–2.289 MiB/s; median 2.275 MiB/s |
-| Raw 2 MiB MTD read | 0.50 s elapsed, 0.46 s kernel CPU |
-| Direct swap-block I/O, with swap disabled | Two complete 28,644 KiB overwrite/readback passes, exercising garbage collection |
-| 16 MiB incompressible memory pressure | Forward and reverse byte verification passed; NAND swap reached 14,572 KiB |
-| ECC and bad blocks after testing and reset | Zero uncorrectable errors and zero bad blocks on both partitions |
-| Existing configuration files across firmware update and reset | Hashes unchanged; contents stayed on NAND |
-
-The memory-pressure test took 72.114 s, with 1,404 major page faults,
-0.551 s user CPU and 11.661 s system CPU in the test process.
-The file benchmark includes data generation and verification: process
-CPU time was 0.874–0.928 s for write and 1.716–1.722 s for read. It
-excludes background UBI work. PIO remains CPU-bound during reads; these
-results do not imply DMA or wire-rate throughput.
-
-Memory-pressure testing exposed both issues above. With 6 MiB zram,
-incompressible data exhausted PSRAM before NAND swap was used. With
-2 MiB zram and the original mtdswap layout, 16 MiB of test data reached
-NAND but failed on read with `-EBADMSG`. A 512 KiB direct block write/read
-reproduced that failure without memory pressure. Reserving marker pages
-made the direct test pass with no new ECC failures. The final full-capacity
-and memory-pressure tests confirm the reservation also works across
-garbage collection. Reboot activated 2,044 KiB zram and 28,644 KiB NAND
-swap, with zero uncorrectable errors. A new 64 KiB random file also
-retained its hash after a synchronized reboot. The writable filesystem
-partition is unaffected by the swap layout change.
-
-After a flash, check the NAND upper mount, both swap priorities and the
-MTD ECC/bad-block counters. Repeat incompressible write/fsync, cold read
-and byte comparison, then apply memory pressure and verify the data
-again. Reboot and recheck swap availability: this exercises the OOB
-marker regression. Verify ordinary writable-file persistence and the
-display and touch paths too. Never unbind GPSPI3 while UBI or NAND swap
-is using it. Test programs, captures and migration archives stay in
-ignored build output.
-
 ### Reboot into the ROM downloader
 
 On ESP-Mosaico, `reboot bootloader` requests an orderly shutdown through
@@ -699,74 +613,14 @@ the reset command when the flasher left the UART at that rate; a fresh ROM
 session starts at 115200. A reset without clearing the forced-download bit
 returns to the ROM downloader.
 
-Validation checks ordinary reboot, rejection of an invalid `next_mode`,
-entry into ROM download, an esptool connection and successful return to
-Linux. The temporary UART logs stay in ignored build output.
-
 ### Continuous UART recording
 
-`scripts/serial-record.py` owns the physical console UART and records received
-bytes before forwarding them to a pseudo-terminal. It sends no commands or
-reset pulses on startup. It sets DTR and RTS inactive before opening the port;
-some USB bridges can still glitch control lines when opened. The recorder
-reconnects after a USB disconnect. Use a stable `/dev/serial/by-id/` path on
-Linux so it reconnects to the board rather than another serial device.
-
-Start it with `make record SERIAL_PORT=PORT`, or keep it running independently
-of the terminal on a Linux host:
-
-```sh
-systemd-run --user --unit=esp-mosaico-serial \
-    --property=Restart=on-failure --property=RestartSec=2 --property=UMask=0077 \
-    --working-directory="$PWD" /usr/bin/python3 "$PWD/scripts/serial-record.py" \
-    --port PORT --baud 115200 --log-dir "$PWD/logs/serial"
-```
-
-The host Python needs pyserial. This transient user service survives closing
-the terminal; it is not installed as a host boot service. Its physical port
-must not be opened by another reader. `make console` connects through
-`logs/serial/console` without resetting the board or creating a second log;
-Ctrl-] closes only the console, leaving recording active. Other command tools
-must use that proxy too. Only one console client should read it at a time.
-
-Raw output rotates through `uart.log`, `uart.log.1` and `uart.log.2`, each at
-most 5,000,000 bytes. The total never exceeds 15,000,000 bytes; rotation removes
-the oldest file first. Read `.2`, then `.1`, then the current file for time
-order. Output is unbuffered to the host filesystem; this does not guarantee
-survival of a host power failure. A slow or absent console can lose proxy
-output but cannot block or truncate the recorded UART stream. `status.json`
-reports connectivity, the PID and any proxy drops. Opening the proxy does not
-replay the entire log. USB disconnection, a stopped recorder, UART overruns
-and output emitted before recording starts can still leave gaps.
-
-Logs have mode 0600 in a private directory and `logs/serial/` is ignored by
-Git. They can contain shell output and credentials: do not publish or commit
-captures without redacting them. The recorder stores no separate transmit log;
-commands echoed by the board still appear in received output.
-
-For flashing, send `reboot bootloader` through the proxy first, then stop
-recording to release the UART:
-
-```sh
-systemctl --user stop esp-mosaico-serial.service
-# Run esptool and scripts/reset-from-bootloader.py on the physical PORT.
-# Run the systemd-run command again after releasing the physical port.
-```
-
-Do not leave recording active while esptool uses the physical UART at a
-different baud rate. A foreground recorder stops with Ctrl-C or SIGTERM.
-After a panic, keep power applied and stop issuing commands while preserving
-the logs. The current kernel does not enable pstore, KGDB or Magic SysRq; a
-reset loses its volatile log and register state. UART recording retains only
-what the board actually emitted and the host received. Reproduce only after
-capturing the first exception, registers, call trace and running build ID.
-
-The recorder's rotation, bidirectional proxy, duplicate-owner rejection,
-slow-console handling and reconnect behavior can be checked without a board:
-
-```sh
-python3 -m unittest discover -s scripts/tests -p 'test_serial_record.py' -v
-```
+`scripts/serial-record.py` records the physical UART before forwarding it
+to a console proxy. It reconnects after USB disconnection and limits its
+rotating logs to 15 MB. Console clients use the proxy; flashing requires
+releasing the physical port. Logs stay in ignored `logs/serial/` and can
+contain private data. See [test recording](testing.md#uart-recording) for
+commands, capture limits and panic handling.
 
 ### Execution and memory
 
@@ -858,66 +712,19 @@ implementation does not provide proportional intensity control. It is
 off at probe and stops when the input device closes. Boot does not play
 an effect.
 
-Validation on 2026-10-29 with kernel `#34` captured an AI press and release
-as `KEY_PROG1` values 1 and 0, about 200 ms apart. The GPIO7 interrupt count
-increased from 0 to 2. A second press/release, about 240 ms apart, increased
-the count to 4 and triggered the motor test. These checks exercise both
-interrupt edges; long holds, rapid repeated presses and the newer image
-still need verification.
-
-Validation on 2026-10-28 loaded the Bosch initialization image and read
-all six BMI270 motion axes and temperature. Both BMM150 devices probe
-and return samples. **Known limitation:** address `0x12` repeatedly
-returns `-2147483648` for Y. This is the driver's overflow sentinel,
-not a usable magnetic-field measurement. The other five magnetic axes
-return finite values. The source of that overflow has not been
-determined, and compass accuracy is not validated. On 2026-10-29 the user
-confirmed three separate vibrations from three 150 ms `FF_RUMBLE` effects.
-The temporary test stopped each effect and closed the device after the
-sequence; motor amplitude and current were not measured. A five-second
-idle sample used approximately 0.6% CPU with the preview stopped and
-input devices closed.
-
-A stationary check on 2026-10-29 collected 20 sets of all 13 raw sensor
-channels at 5 Hz without read errors. The BMI270 acceleration vector had
-a mean magnitude of 9.83 m/s² using its reported scale; mean angular rates
-were within 0.0025 rad/s of zero. A separate three-minute, 900-set capture
-also had no read errors, but every `0x12` Y sample was the overflow
-sentinel. Each set used sequential sysfs reads, taking 5 to 8 ms; these
-are functional checks, not synchronized scans or a calibration.
-
-A subsequent AI-triggered, 60-second capture recorded 300 sets during
-user-operated forward/back and left/right tilts, horizontal X/Y movement,
-and rotation about the gravity axis. All three accelerometer and gyroscope
-axes responded, then settled when the device was put down. The final
-five-second mean acceleration magnitude was 9.83 m/s². There were no read
-errors. All three `0x11` magnetic axes and the `0x12` X/Z axes changed
-during motion, but all 300 `0x12` Y readings remained overflow samples.
-This validates motion response, not axis mounting, absolute accuracy or
-compass heading.
-
-The upstream Y compensation path returns this sentinel when the signed
-raw Y register value is `-4096`. Section 4.6.6 of the Bosch
-[BMM150 datasheet](https://www.bosch-sensortec.com/media/boschsensortec/downloads/datasheets/bst-bmm150-ds001.pdf)
-defines that raw value as an X/Y measurement overflow. The software must
-retain it as invalid data rather than scale it into a magnetic field.
-The tested enclosure has rear permanent magnets, as confirmed by the
-user. Their positions relative to the sensors stay fixed during whole-body
-rotation. The valid magnetic readings also have a large fixed component:
-the `0x12` X axis remained around -1040 to -1090 µT and Z around 580 to
-640 µT during the motion test. Magnetic influence from the assembly is
-therefore a plausible explanation for the saturation; the measurements
-do not establish a faulty sensor or a compensation bug.
+The assembled device has rear permanent magnets. BMM150 at `0x12` returns
+an overflow sentinel (`-2147483648`) on Y in the recorded tests; applications
+must treat it as invalid data. The fixed magnetic field from the assembly
+is a possible cause, and whole-board rotation does not change the relative
+positions of its magnets and sensors. This does not establish a sensor
+fault. See the [sensor measurements](testing.md#ai-button-vibration-and-sensors).
 
 The official BSP's
 [magnetic interaction example](https://github.com/esp-mosaico/esp-mosaico-bsp/tree/7cbfb390638dcb93522fc3cde094b2d43cf907c2/examples/magnetic_interaction_demo)
-uses the two sensors for magnetic contact classification. Its prototype
-profile includes baseline and saturation handling and is specific to its
-tested magnets and enclosure. Linux exposes the upstream IIO measurements;
-it does not yet provide that application-level classifier. Calibration
-cannot recover an already saturated axis. The present result is a
-measurement limitation with the assembled device, not a confirmed hardware
-failure or a validated six-axis magnetic measurement.
+uses the two sensors for contact classification, with baseline and saturation
+handling specific to its magnets and enclosure. Linux exposes IIO readings;
+that classifier is not implemented. Calibration cannot recover saturated
+measurements.
 
 Several power parts operate autonomously. The HUSB320 has its SCL/OUT2
 and SDA/OUT1 pins unconnected in this schematic, so no I2C Type-C driver
@@ -926,7 +733,7 @@ without MCU status signals. TLV62569, SY7088 and HE9073A33 provide the
 fixed power rails; their presence does not imply a programmable bus
 interface. The SAM8108 power latch remains hardware-controlled; Linux
 keeps the existing SBI shutdown path. ES8311 responds at `0x19`; the new
-ASoC path is described below. No speaker playback was performed.
+ASoC path is described below.
 
 ### Native Type-C USB
 
@@ -937,27 +744,15 @@ unconnected I2C pins do not provide role notifications to Linux.
 
 ESP-Mosaico selects **fixed peripheral mode**. `S10usb` loads DWC2 and
 `g_serial use_acm=1`, exposing a CDC ACM data channel at `/dev/ttyGS0`.
-No login service runs on that port. Connect a data-capable Type-C cable
-to a computer while retaining the external UART connection. The computer
-should enumerate a USB ACM port. Check the UDC state with:
-
-```sh
-for d in /sys/class/udc/*; do
-    echo "$d: $(cat "$d/state")"
-done
-```
-
-A `configured` state and bidirectional byte transfer are required for a
-functional check; a UDC alone is insufficient. `S10usb stop` disconnects
-the gadget without unloading the controller. Runtime host/device switching
-is unsupported: an experimental host-to-device switch hung this board and
-required a physical reset. Other boards retain their host configurations.
+No login service runs on that port. `S10usb stop` disconnects the gadget
+without unloading the controller. Runtime host/device switching is
+unsupported; other boards retain their host configurations.
 
 The generic PHY receives the fixed controller mode after initialization
 and before power-on, so peripheral mode removes host pull-downs. All seven
 endpoint TX FIFO sizes are explicit: RX 384 words, EP0 TX 64, remaining
 TX FIFOs 128/128/16/16/16/16/16, totaling 784 of 896 words. Gadget buffer
-and descriptor DMA remain disabled; USB throughput has not been measured.
+and descriptor DMA remain disabled.
 
 ### I2S and ES8311 audio
 
@@ -994,88 +789,21 @@ the CPU handles period interrupts and ALSA buffer accounting. Termination
 masks interrupts and resets the channel; descriptor release waits for
 callback synchronization.
 
-`S12audio` loads modules without starting a stream. Discover the card and
-controls before setting gain or starting recording:
-
-```sh
-cat /proc/asound/cards
-arecord -l
-aplay -l
-amixer -c 0 scontrols
-```
-
-A capture-only transport check, once the card has probed, is:
-
-```sh
-arecord -D hw:0,0 -t raw -f S16_LE -c 2 -r 16000 -d 3 /tmp/microphone.raw
-wc -c /tmp/microphone.raw
-```
-
-The expected payload is 192000 bytes. File size alone does not validate the
-microphone signal: also check samples, elapsed time, DMA errors and xruns.
-Input routing and gains depend on the enumerated codec controls. Speaker
-testing is reserved for the user; begin at low codec volume with a short
-known recording after inspecting the control names. No boot service plays
-sound.
-
-### USB, GPIO IRQ and audio validation status
-
-The 2026-10-28 local build passes compilation, zero-fuzz patch application,
-new binding validation and strict checkpatch. An earlier on-device kernel
-registered the GPIO7 AI interrupt and DWC2 UDC. AI press/release events
-were subsequently verified on kernel `#34`, as described above. Actual
-PC USB enumeration, the final FIFO configuration and audio DMA capture
-still require validation on the updated image. The board stopped
-responding after the experimental USB role switch; software UART and ROM
-probes could not recover it. No audio stream has been run. Physical motor
-vibration was subsequently confirmed by the user on 2026-10-29.
-
-On 2026-10-29 the user reset the unresponsive board. Its retained boot
-messages identify kernel `#34` from 2026-10-28 21:02:14 and a DWC2 WARNING
-at 9.925 seconds: `insufficient fifo memory` during `g_serial` loading.
-Linux remains responsive after that warning, with `panic_on_warn=0` and
-`panic_on_oops=0`. This is not evidence of the earlier panic's cause; its
-original exception was not captured. The newer fixed-role/FIFO image has
-not been flashed. Continuous host UART recording is now enabled.
-
-A subsequent report of a trace remaining on the LCD was checked through
-the external camera and `/dev/vcs1`. The screen's addresses and timestamps
-matched that same boot-time USB warning. UART commands still completed,
-and a fresh `dmesg` contained no newer Oops or panic.
+`S12audio` loads modules without starting a stream. No boot service plays
+sound. Hardware capture and playback remain unverified; see the
+[audio checks](testing.md#audio). Speaker testing is reserved for the user.
 
 ### BQ27220 battery gauge
 
-**Known issue (2026-10-28): BQ27220 does not respond at I2C address
-`0x55` on the tested CoreBoard V1.2.** The internal battery is connected
-and USB power is attached; the user reports that the battery is charging.
-The cause of the missing response has not been established.
+BQ27220 at I2C `0x55` does not respond on the tested CoreBoard V1.2, even
+with the connected battery and USB power. The BSP-equivalent device-number
+request also times out; the cause is unresolved. The
+[validation record](testing.md#battery-gauge) gives the transactions and
+control reads.
 
-The official [BSP battery initialization](https://github.com/esp-mosaico/esp-mosaico-bsp/blob/7cbfb390638dcb93522fc3cde094b2d43cf907c2/components/esp-mosaico-bsp/onboard/battery.c)
-uses the shared 400 kHz I2C bus on GPIO56 (SDA) and GPIO3 (SCL). Its
-[BQ27220 component](https://github.com/espressif/esp-iot-solution/blob/1608d9c922c992986c285fd753ef15ecbbad3cde/components/sensors/battery_fuel_gauge/bq27220/bq27220.c)
-first requests the device number: write little-endian `0x0001` to control
-register `0x00`, wait 15 ms, then read two bytes from MAC data register
-`0x40`. The expected device number is `0x0220`.
-
-The equivalent Linux transactions were repeated on the board:
-
-```sh
-i2ctransfer -y 0 w3@0x55 0x00 0x01 0x00
-usleep 15000
-i2ctransfer -y 0 w1@0x55 0x40 r2
-```
-
-Both the initial command write and the ID read return `Operation timed
-out`. A direct two-byte voltage read from register `0x08` also times out.
-On the same bus, control reads return ES8311 ID bytes `0x83`, `0x11` and
-BMI270 chip ID `0x24`. Those successful reads confirm that the shared bus
-can communicate with other devices; they do not establish why the gauge
-fails.
-
-No BQ27220 device-tree node, driver extension or automatic probe is
-enabled. The gauge was not unsealed, reset or given a battery profile.
-The BSP's 80 mAh profile is not applied to this board's 65 mAh battery.
-Revisit support only after device-number reads succeed on the hardware.
+No BQ27220 device-tree node, driver extension or automatic probe is enabled.
+The gauge has not been unsealed, reset or given a battery profile. Support
+is deferred until device-number reads succeed on the hardware.
 
 ## ESP-Mosaico camera
 
@@ -1131,17 +859,8 @@ follows the official
 [Mosaico BSP camera fixes](https://github.com/esp-mosaico/esp-mosaico-bsp/tree/7cbfb390638dcb93522fc3cde094b2d43cf907c2/components/mosaico_module_camera/patches):
 zero SC101IOT PCLK delay and a receiver FIFO reset before each frame.
 
-Validation on 2026-10-28 used a temporary V4L2 MMAP capture program on the
-CoreBoard V1.2 and CameraBoard V1.4. A 60-frame run had no error frames;
-a 300-frame run had one initial short frame and then 300 complete frames
-without sequence gaps, at approximately 15 fps. A saved UYVY frame was
-converted and visually checked. Unbinding the module driver during
-capture woke the application with a poll error; capture while absent
-failed with `ENOLINK`, and rebinding restored a 60-frame capture. These
-checks exercise sensor removal and recreation in software. Physical
-unplug/replug, boot with the module absent and electrical behavior during
-connector insertion still need hardware validation. Captures and temporary
-test programs stay in ignored `build/` directories.
+Capture and reconnection results, including the temporary preview's physical
+unplug/replug check, are in the [camera validation record](testing.md#camera).
 
 ## Build configurations
 
