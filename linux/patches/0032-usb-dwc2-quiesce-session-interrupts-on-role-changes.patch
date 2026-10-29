@@ -1,0 +1,49 @@
+From: whatshu <shussm@qq.com>
+Subject: [PATCH] usb: dwc2: quiesce old session interrupts during role changes
+
+Ending the B-session before forcing host mode raises session-end and
+reset interrupts on the ESP32-S31. These can continuously retrigger in
+the old device role, starving the thread that must force the new mode.
+Mask those old-role events before ending the session; host initialization
+installs its interrupt mask after the mode change.
+
+A software role switch without HNP or SRP does not need the OTG negotiation
+interrupt in host mode. Leave it masked when initializing common interrupts
+so the pending session-end event cannot starve HCD startup either. Keep
+existing behavior for controllers using hardware OTG session management.
+
+Signed-off-by: whatshu <shussm@qq.com>
+---
+diff --git a/drivers/usb/dwc2/drd.c b/drivers/usb/dwc2/drd.c
+--- a/drivers/usb/dwc2/drd.c
++++ b/drivers/usb/dwc2/drd.c
+@@ -145,6 +145,14 @@
+ 		dwc2_gadget_exit_clock_gating(hsotg, 0);
+ 
+ 	if (role == USB_ROLE_HOST) {
++		if (dwc2_is_device_mode(hsotg)) {
++			u32 mask = dwc2_readl(hsotg, GINTMSK);
++
++			/* The old B-session ends before host mode is forced. */
++			mask &= ~(GINTSTS_OTGINT | GINTSTS_USBRST |
++				  GINTSTS_RESETDET);
++			dwc2_writel(hsotg, mask, GINTMSK);
++		}
+ 		already = dwc2_ovr_avalid(hsotg, true);
+ 	} else if (role == USB_ROLE_DEVICE) {
+ 		already = dwc2_ovr_bvalid(hsotg, true);
+diff --git a/drivers/usb/dwc2/hcd.c b/drivers/usb/dwc2/hcd.c
+--- a/drivers/usb/dwc2/hcd.c
++++ b/drivers/usb/dwc2/hcd.c
+@@ -50,7 +50,10 @@
+ 	dwc2_writel(hsotg, 0xffffffff, GINTSTS);
+ 
+ 	/* Enable the interrupts in the GINTMSK */
+-	intmsk = GINTSTS_MODEMIS | GINTSTS_OTGINT;
++	intmsk = GINTSTS_MODEMIS;
++	if (!hsotg->role_sw || hsotg->params.otg_caps.hnp_support ||
++	    hsotg->params.otg_caps.srp_support)
++		intmsk |= GINTSTS_OTGINT;
+ 
+ 	if (!hsotg->params.host_dma)
+ 		intmsk |= GINTSTS_RXFLVL;

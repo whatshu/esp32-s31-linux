@@ -39,8 +39,8 @@ and [display and touch](docs/internals.md#display-and-touch) for those drivers.
 See [camera](docs/internals.md#esp-mosaico-camera) for module handling and limits.
 The board also exposes the BMI270 IMU and two BMM150 magnetometers through
 IIO, an interrupt-driven AI button and a GPIO vibrator. Native Type-C
-provides CDC ACM and ROM USB downloading; OTG host/HID hardware validation
-is in progress. ES8311/I2S DMA audio provides speaker playback. See
+provides CDC ACM, manually selected USB host mode for keyboards and mice,
+and ROM USB downloading. ES8311/I2S DMA audio provides speaker playback. See
 [on-board peripherals](docs/internals.md#esp-mosaico-on-board-peripherals)
 for their interfaces and current limitations.
 

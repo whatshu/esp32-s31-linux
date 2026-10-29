@@ -31,7 +31,7 @@ correction described below.
 | AI key and motor | Both key edges recorded; user confirmed three vibrations | Long holds, rapid presses and motor cancellation on close need dedicated checks. |
 | BMI270 | Initialization, temperature reads, stationary and motion response checked | Mounting axes, calibration and physical accuracy are unverified. |
 | Two BMM150 sensors | Both probe; five magnetic axes respond | `0x12` Y overflows in this magnetic assembly; six-axis magnetic measurements and heading are unverified. |
-| Native Type-C USB | Updated image registers the UDC and loads `g_serial` without the FIFO warning | Host enumeration and bidirectional transfers remain unverified. |
+| Native Type-C USB | Native ROM flashing, CDC byte loopback, hub/HID enumeration and keyboard/mouse input checked | USB storage and networking are unverified. |
 | ES8311 / I2S / DMA | User heard the AI-triggered 0.5 s, 440 Hz tone at BSP 50%; amplifier-off routing checked | Output was quiet. Recording and other rates remain unverified. |
 | Camera | VGA MMAP capture and physical reconnect with the temporary preview checked | DMA-BUF import, boot without the module and repeated hotplug cycles remain unverified. |
 | Bluetooth | Shared radio firmware provides the controller | V1.2 BLE and BR/EDR scan, connection and data transfer lack a hardware validation record. |
@@ -276,7 +276,7 @@ do not establish a faulty sensor or a compensation bug.
 
 ## Native Type-C USB
 
-On 2026-10-29, kernel #39 and the updated rootfs passed a complete native
+On 2026-10-29, kernel `#40` and the updated rootfs passed a complete native
 USB flash and boot cycle. CH343 remained the debug console at 115200 baud
 with the same recorder PID throughout. After `reboot bootloader`, ROM
 appeared as `303a:0020`; esptool reported USB-OTG and verified all seven
@@ -287,16 +287,29 @@ mounted normally.
 
 Linux then automatically enumerated as `0525:a4a7` CDC ACM, with UDC
 `configured` at high speed. A temporary raw echo process on
-`/dev/ttyGS0` returned 262,144 bytes in each direction in 0.192 seconds;
+`/dev/ttyGS0` returned 262,144 bytes in each direction in 0.210 seconds;
 all bytes matched, including all 256 byte values. This is a functional
 loopback check, not a bulk-throughput benchmark. The echo process was
-stopped after the test. Repeated init start, stop/start and restart also
-restored enumeration without UDC start/stop warnings. Keyboard/mouse
-hardware validation is still pending: the first device-to-host switch with
-a mouse attached stopped responding without an Oops or panic in the UART
-log. Removing the adapter did not restore the console; RESET did. The
-role-switch path is under investigation and host support is not yet
-validated.
+stopped after the test. On the earlier `#39` image, repeated init start,
+stop/start and restart also restored enumeration without UDC start/stop
+warnings.
+
+Host validation used kernel `#39` with the production DWC2 module changes
+from patch `0032` loaded separately. A high-speed Xiaomi USB2.1 hub
+(`5059:5058`) enumerated a low-speed keyboard (`c0f4:01e0`) and optical
+mouse (`093a:2510`), both bound to `hid-generic`. The input check recorded
+16 keyboard presses and releases, four mouse presses and releases, and
+131 relative-motion events. Only event counts were saved. The user also
+confirmed text appearing on the panel console. Switching back to device
+and then host completed with live SSH heartbeats and re-enumerated both
+HID devices.
+
+The original host switch starved Linux with repeated
+`GOTGINT.SES_END_DET` interrupts before forcing the new mode. Masking the
+old gadget session/reset events during handoff lets the switch complete.
+Keeping OTG negotiation interrupts masked for software role switches
+without HNP/SRP also prevents the event from starving HCD initialization.
+The production module contains no diagnostic logging.
 
 The earlier two-process flash/reset helper verified flash but could fail
 while reconnecting to the active USB stub, even though the board reset.
@@ -342,40 +355,25 @@ unloading the controller or changing its role.
 
 ### Build and runtime record
 
-The 2026-10-28 USB/audio build passed compilation, zero-fuzz patch
-application, new binding validation and strict checkpatch. The image was
-flashed on 2026-10-29: kernels `#37` and `#38` register the DWC2 UDC and load
-`g_serial` without the earlier FIFO warning. PC enumeration and data
-transfer remain unverified. An earlier experimental USB role switch left
-the board unresponsive; software UART and ROM probes could not recover it.
-
-The subsequent dual-role/HID build, kernel `#39`, boots and loads DWC2,
-`usbhid`, `hid_generic`, `mousedev` and `g_serial`. Its 4,681,556-byte kernel
-and 9,203,712-byte squashfs fit the NOR partitions. All 31 kernel patches
-apply at zero fuzz, the USB DT bindings and strict checkpatch pass, and
-stripping the 53 installed modules preserves their allocated sections
-and relocations. This image was written through CH343 before the flashing
-workflow was corrected. Native USB flashing and host HID input still need
-physical verification; the current UDC state is `not attached`.
+The complete role-switch build passes strict checkpatch and all 32 kernel
+patches apply at zero fuzz. Its 4,681,556-byte kernel and 9,207,808-byte
+squashfs fit the NOR partitions. The complete bundle was flashed through
+native ROM USB and booted kernel `#40` without a manual reset. The installed
+DWC2 module matched the packaged module byte-for-byte; default device mode,
+high-speed CDC loopback, Wi-Fi/SSH, NAND overlay and both swap devices were
+checked after flashing. The host input and role-switch checks above used
+the same source changes as a separately loaded module on `#39`.
 
 The native USB flashing helper rejects CH343, Serial/JTAG, Linux gadget,
-unidentified and unrelated USB ports before invoking esptool. Host-side
-tests cover this rejection, ROM USB selection through a symlink and leaving
-the downloader available after a failed write. These checks do not replace
-an actual ROM USB flash followed by a Linux boot with continuous UART logs.
+unidentified and unrelated USB ports before opening them. Host-side tests
+cover identity checks, image parsing, overlapping erase sectors, reset
+ordering and leaving the downloader available after a failed write.
 
-On 2026-10-29 the user reset the unresponsive board. Its retained boot
-messages identify kernel `#34` from 2026-10-28 21:02:14 and a DWC2 WARNING
-at 9.925 seconds: `insufficient fifo memory` during `g_serial` loading.
-Linux remains responsive after that warning, with `panic_on_warn=0` and
-`panic_on_oops=0`. This is not evidence of the earlier panic's cause; its
-original exception was not captured. Continuous host UART recording is
-now enabled.
-
-A subsequent report of a trace remaining on the LCD was checked through
-the external camera and `/dev/vcs1`. The screen's addresses and timestamps
-matched that same boot-time USB warning. UART commands still completed,
-and a fresh `dmesg` contained no newer Oops or panic.
+An older boot-time `insufficient fifo memory` warning remained visible on
+the panel after kernel `#34` booted. UART commands still completed and the
+panel contents matched the retained kernel log; this was not a new panic.
+The original earlier panic was not captured. Subsequent FIFO configuration
+fixes removed that warning; continuous UART recording remains enabled.
 
 ## Audio
 
@@ -495,6 +493,9 @@ contains the input and sensor runs; `triggered-motion.csv` and
 The earlier 900-set run was not the requested movement sequence.
 `build/panic-audit/20261029-091238/` contains the screen/virtual-console
 comparison and retained kernel log.
+
+`build/usb-otg/` contains native flashing, CDC, role-switch and HID input
+records.
 
 These local paths are evidence locations, not committed test fixtures or
 required build inputs. New runs should keep their own build IDs and results
