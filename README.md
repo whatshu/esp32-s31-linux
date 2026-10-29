@@ -301,6 +301,9 @@ submodules only.
 - `make monitor` resets the board, waits for the banner, then stays open as
   a terminal. Push `Ctrl-]` to exit. Set `RESET_PORT` if the RTS line of
   `SERIAL_PORT` cannot reset the board.
+- `make record SERIAL_PORT=PORT` records UART without resetting, keeping
+  at most 15 MB locally. Use `make console` through its proxy; see
+  [continuous UART recording](docs/internals.md#continuous-uart-recording).
 - `make sdwrite SD_DISK=/dev/diskN` writes the disk image to a card or a
   stick. `make sdpart` lays out a large disk. `make sdroot` writes only the
   root partition, for an update. These targets erase data and ask first.

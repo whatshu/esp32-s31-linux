@@ -39,11 +39,18 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--success-pattern", default="ESP32-S31 Linux / Buildroot")
     parser.add_argument("--no-reset", action="store_true")
     parser.add_argument(
+        "--no-log", action="store_true",
+        help="do not create a second log when using a recorder console",
+    )
+    parser.add_argument(
         "--interactive",
         action="store_true",
         help="stay connected as a terminal after the success pattern (Ctrl-] exits)",
     )
-    return parser.parse_args()
+    args = parser.parse_args()
+    if args.no_log and not args.no_reset:
+        parser.error("--no-log requires --no-reset")
+    return args
 
 
 def pulse_reset(ser: serial.Serial) -> None:
@@ -131,8 +138,8 @@ def capture(
 
 def run(args: argparse.Namespace, log: BinaryIO, deadline: float) -> bool:
     with serial.Serial(args.port, args.baud, timeout=0) as ser:
-        ser.reset_input_buffer()
         if not args.no_reset:
+            ser.reset_input_buffer()
             reset_board(ser, args, log)
         with raw_stdin(args.interactive and sys.stdin.isatty()) as stdin_fd:
             return capture(ser, log, args.success_pattern.encode(), deadline, stdin_fd)
@@ -140,8 +147,11 @@ def run(args: argparse.Namespace, log: BinaryIO, deadline: float) -> bool:
 
 def main() -> int:
     args = parse_args()
-    os.makedirs(args.log_dir, exist_ok=True)
-    path = os.path.join(args.log_dir, f"{now_name()}-reset-uart.log")
+    if args.no_log:
+        path = os.devnull
+    else:
+        os.makedirs(args.log_dir, exist_ok=True)
+        path = os.path.join(args.log_dir, f"{now_name()}-reset-uart.log")
     deadline = time.monotonic() + args.timeout
 
     print(f"log={path}")

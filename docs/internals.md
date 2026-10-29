@@ -703,6 +703,71 @@ Validation checks ordinary reboot, rejection of an invalid `next_mode`,
 entry into ROM download, an esptool connection and successful return to
 Linux. The temporary UART logs stay in ignored build output.
 
+### Continuous UART recording
+
+`scripts/serial-record.py` owns the physical console UART and records received
+bytes before forwarding them to a pseudo-terminal. It sends no commands or
+reset pulses on startup. It sets DTR and RTS inactive before opening the port;
+some USB bridges can still glitch control lines when opened. The recorder
+reconnects after a USB disconnect. Use a stable `/dev/serial/by-id/` path on
+Linux so it reconnects to the board rather than another serial device.
+
+Start it with `make record SERIAL_PORT=PORT`, or keep it running independently
+of the terminal on a Linux host:
+
+```sh
+systemd-run --user --unit=esp-mosaico-serial \
+    --property=Restart=on-failure --property=RestartSec=2 --property=UMask=0077 \
+    --working-directory="$PWD" /usr/bin/python3 "$PWD/scripts/serial-record.py" \
+    --port PORT --baud 115200 --log-dir "$PWD/logs/serial"
+```
+
+The host Python needs pyserial. This transient user service survives closing
+the terminal; it is not installed as a host boot service. Its physical port
+must not be opened by another reader. `make console` connects through
+`logs/serial/console` without resetting the board or creating a second log;
+Ctrl-] closes only the console, leaving recording active. Other command tools
+must use that proxy too. Only one console client should read it at a time.
+
+Raw output rotates through `uart.log`, `uart.log.1` and `uart.log.2`, each at
+most 5,000,000 bytes. The total never exceeds 15,000,000 bytes; rotation removes
+the oldest file first. Read `.2`, then `.1`, then the current file for time
+order. Output is unbuffered to the host filesystem; this does not guarantee
+survival of a host power failure. A slow or absent console can lose proxy
+output but cannot block or truncate the recorded UART stream. `status.json`
+reports connectivity, the PID and any proxy drops. Opening the proxy does not
+replay the entire log. USB disconnection, a stopped recorder, UART overruns
+and output emitted before recording starts can still leave gaps.
+
+Logs have mode 0600 in a private directory and `logs/serial/` is ignored by
+Git. They can contain shell output and credentials: do not publish or commit
+captures without redacting them. The recorder stores no separate transmit log;
+commands echoed by the board still appear in received output.
+
+For flashing, send `reboot bootloader` through the proxy first, then stop
+recording to release the UART:
+
+```sh
+systemctl --user stop esp-mosaico-serial.service
+# Run esptool and scripts/reset-from-bootloader.py on the physical PORT.
+# Run the systemd-run command again after releasing the physical port.
+```
+
+Do not leave recording active while esptool uses the physical UART at a
+different baud rate. A foreground recorder stops with Ctrl-C or SIGTERM.
+After a panic, keep power applied and stop issuing commands while preserving
+the logs. The current kernel does not enable pstore, KGDB or Magic SysRq; a
+reset loses its volatile log and register state. UART recording retains only
+what the board actually emitted and the host received. Reproduce only after
+capturing the first exception, registers, call trace and running build ID.
+
+The recorder's rotation, bidirectional proxy, duplicate-owner rejection,
+slow-console handling and reconnect behavior can be checked without a board:
+
+```sh
+python3 -m unittest discover -s scripts/tests -p 'test_serial_record.py' -v
+```
+
 ### Execution and memory
 
 Linux continues to execute from PSRAM. Both harts are already in use:
@@ -918,6 +983,14 @@ capture still require validation on the updated image. The board stopped
 responding after the experimental USB role switch; software UART and ROM
 probes could not recover it. No audio stream has been run. The motor's
 150 ms effect reached evdev; physical vibration needs user confirmation.
+
+On 2026-10-29 the user reset the unresponsive board. Its retained boot
+messages identify kernel `#34` from 2026-10-28 21:02:14 and a DWC2 WARNING
+at 9.925 seconds: `insufficient fifo memory` during `g_serial` loading.
+Linux remains responsive after that warning, with `panic_on_warn=0` and
+`panic_on_oops=0`. This is not evidence of the earlier panic's cause; its
+original exception was not captured. The newer fixed-role/FIFO image has
+not been flashed. Continuous host UART recording is now enabled.
 
 ### BQ27220 battery gauge
 

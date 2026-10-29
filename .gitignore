@@ -5,6 +5,7 @@ __pycache__/
 .DS_Store
 logs/*.log
 logs/*.json
+logs/serial/
 local-overlay/*
 !local-overlay/.empty
 release/
