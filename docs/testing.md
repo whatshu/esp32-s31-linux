@@ -17,8 +17,9 @@ than claiming coverage of every later revision.
 
 Status as of 2026-10-29, on CoreBoard V1.2. Camera results apply only to
 left-slot CameraBoard V1.4 / SC101IOT. The input and sensor run used kernel
-`#34`, built on 2026-10-28 at 21:02:14; the later fixed-peripheral USB FIFO
-and audio image has been built but not flashed.
+`#34`, built on 2026-10-28 at 21:02:14. USB/audio kernel `#37` was flashed
+on 2026-10-29, followed by `#38` (11:35:15 CST) with the amplifier routing
+correction described below.
 
 | Path | Recorded hardware result | Remaining checks |
 | --- | --- | --- |
@@ -30,8 +31,8 @@ and audio image has been built but not flashed.
 | AI key and motor | Both key edges recorded; user confirmed three vibrations | Long holds, rapid presses and motor cancellation on close need dedicated checks. |
 | BMI270 | Initialization, temperature reads, stationary and motion response checked | Mounting axes, calibration and physical accuracy are unverified. |
 | Two BMM150 sensors | Both probe; five magnetic axes respond | `0x12` Y overflows in this magnetic assembly; six-axis magnetic measurements and heading are unverified. |
-| Native Type-C USB | Earlier kernel registered a UDC | Updated FIFO image, host enumeration, bidirectional transfers, reconnect and throughput remain unverified. |
-| ES8311 / I2S / DMA | Codec ID read; audio implementation built | Card probe, recording, rates, DMA stability and user-operated speaker playback remain unverified. |
+| Native Type-C USB | Updated image registers the UDC and loads `g_serial` without the FIFO warning | Host enumeration and bidirectional transfers remain unverified. |
+| ES8311 / I2S / DMA | Card probes; 16 kHz stereo DMA and amplifier-off routing checked | User reported no sound on the initial tone test; revised playback awaits confirmation. Recording and other rates remain unverified. |
 | Camera | VGA MMAP capture and physical reconnect with the temporary preview checked | DMA-BUF import, boot without the module and repeated hotplug cycles remain unverified. |
 | Bluetooth | Shared radio firmware provides the controller | V1.2 BLE and BR/EDR scan, connection and data transfer lack a hardware validation record. |
 | Power management | Hardware charging is reported by the user | Linux shutdown on V1.2 and power consumption are unverified. |
@@ -45,10 +46,10 @@ and charge LEDs remain hardware-controlled; Linux uses the existing SBI
 shutdown path. Programmable battery monitoring is blocked by the gauge's
 missing response.
 
-The next hardware pass should start with the built USB/audio image: retain
-UART recording, verify fixed-peripheral USB without role switching, then
-verify capture before user-operated speaker playback. No speaker playback
-has been performed during bring-up.
+The current pass is limited to user-triggered speaker playback followed by
+fixed-peripheral USB enumeration and data transfer. Reliability and stress
+checks listed above are not part of this pass. Retain UART recording and
+do not start audible playback without a physical user key press.
 
 ## UART recording
 
@@ -300,20 +301,19 @@ the gadget without unloading the controller.
 ### Build and runtime record
 
 The 2026-10-28 USB/audio build passed compilation, zero-fuzz patch
-application, new binding validation and strict checkpatch. An earlier
-on-device kernel registered the DWC2 UDC. PC USB enumeration, the final
-FIFO configuration and audio DMA capture still require validation on the
-updated image. The board stopped responding after the experimental USB
-role switch; software UART and ROM probes could not recover it. No audio
-stream has been run.
+application, new binding validation and strict checkpatch. The image was
+flashed on 2026-10-29: kernels `#37` and `#38` register the DWC2 UDC and load
+`g_serial` without the earlier FIFO warning. PC enumeration and data
+transfer remain unverified. An earlier experimental USB role switch left
+the board unresponsive; software UART and ROM probes could not recover it.
 
 On 2026-10-29 the user reset the unresponsive board. Its retained boot
 messages identify kernel `#34` from 2026-10-28 21:02:14 and a DWC2 WARNING
 at 9.925 seconds: `insufficient fifo memory` during `g_serial` loading.
 Linux remains responsive after that warning, with `panic_on_warn=0` and
 `panic_on_oops=0`. This is not evidence of the earlier panic's cause; its
-original exception was not captured. The newer fixed-role/FIFO image has
-not been flashed. Continuous host UART recording is now enabled.
+original exception was not captured. Continuous host UART recording is
+now enabled.
 
 A subsequent report of a trace remaining on the LCD was checked through
 the external camera and `/dev/vcs1`. The screen's addresses and timestamps
@@ -341,9 +341,35 @@ wc -c /tmp/microphone.raw
 The expected payload is 192000 bytes. File size alone does not validate the
 microphone signal: also check samples, elapsed time, DMA errors and xruns.
 Input routing and gains depend on the enumerated codec controls. Speaker
-testing is reserved for the user; begin at low codec volume with a short
-known recording after inspecting the control names. No boot service plays
-sound.
+testing requires a physical user key press. No boot service plays sound.
+
+### Speaker bring-up (2026-10-29)
+
+On kernel `#37`, the temporary AI-key test submitted 8000 stereo S16_LE
+frames at 16 kHz and drained in 0.513 s without a DMA error. The user
+reported no sound after two key presses; the one-shot program logged only
+the first playback. Successful DMA completion does not establish audible
+output.
+
+Silent register probes found that the generic amplifier's unused right
+output remained a DAPM endpoint, keeping GPIO45 high even with `Speaker
+Switch` disabled. Kernel `#38` routes both logical amplifier paths through
+the controlled mono speaker endpoint. With the switch off, GPIO45 now
+reads low during and after an 8000-frame all-zero DMA check (0.512 s).
+Pad sampling observed BCLK, WS and MCLK transitions; changing the GPIO
+output-enable bits did not change them, so no pinctrl change was made.
+Codec register readback and these pad samples do not validate the analog
+output or all I2S timing requirements.
+
+The revised temporary program waits for a fresh AI press, streams one
+second of zeros with the speaker disabled to establish clocks, then plays
+one 0.5 s, 440 Hz stereo tone with short amplitude ramps. It disables the
+speaker afterward and waits for another press. Its volume follows the
+[official codec library's default curve](https://github.com/espressif/esp-adf/blob/release/v2.x/components/esp_codec_dev/esp_codec_dev.c):
+50% maps to -25 dB, with the BSP's 3.3 V / 5 V hardware-gain compensation
+giving ES8311 DAC register value 148 (-21.5 dB). The initial test used raw
+128 (-31.5 dB), which is half the register range but differs from BSP 50%.
+Audible output on the revised setup remains pending user confirmation.
 
 ## Battery gauge
 

@@ -66,8 +66,11 @@
 		simple-audio-card,aux-devs = <&amplifier>;
 		simple-audio-card,widgets = "Speaker", "Speaker",
 					    "Microphone", "Microphone";
+		/* Both logical channels of the generic amp end at the mono speaker. */
 		simple-audio-card,routing = "Speaker", "Amp OUTL",
+					   "Speaker", "Amp OUTR",
 					   "Amp INL", "OUT",
+					   "Amp INR", "OUT",
 					   "MIC1", "Microphone";
 		simple-audio-card,pin-switches = "Speaker";
 
