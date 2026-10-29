@@ -1,7 +1,9 @@
 # Local stack preparation
 
 These notes belong to the fork. Do not include this branch in the three
-upstream series. No PRs, pushes or stack service submissions were made.
+upstream series. Branch publication and hardware checks are recorded in
+[stack-validation.md](stack-validation.md). No PR or stack service submission
+is part of this work.
 
 The branch chain is `upstream/main -> bsp -> peripheral -> application`.
 The requested original-project baseline is
@@ -29,11 +31,11 @@ Base: `upstream/main`.
 636ddbe spi: add ESP32-S31 GPSPI masters and native memory operations
 4f30e58 mtd: spinand: use the one-byte bad-block marker on GD5F1GM7UE
 74d9f9c mtd: mtdswap: reserve ECC-protected marker pages when requested
-6fe7b60 riscv: add minimal ESP-Mosaico CoreBoard V1.2 support
-619ec3e buildroot: strip unused symbols from installed kernel modules
-944df37 power: reset: support orderly ESP32-S31 ROM download reboots
-b5f92f7 scripts: retain bounded UART logs behind a console proxy
-e1ab74c scripts: flash Mosaico over native ROM USB and return to Linux
+080b8b4 riscv: add minimal ESP-Mosaico CoreBoard V1.2 support
+be34151 buildroot: strip unused symbols from installed kernel modules
+4c573b7 power: reset: support orderly ESP32-S31 ROM download reboots
+891ae22 scripts: retain bounded UART logs behind a console proxy
+e772163 scripts: flash Mosaico over native ROM USB and return to Linux
 ```
 
 ## peripheral
@@ -41,20 +43,20 @@ e1ab74c scripts: flash Mosaico over native ROM USB and return to Linux
 Base: `bsp`.
 
 ```text
-0ce8cac input: touchscreen: add the Hynitron CST9220 controller
-9d3c0c9 fbdev: add a CO5300 QSPI framebuffer with dirty-region updates
-36da01c riscv: dts: enable the Mosaico display and touchscreen
-15b4eb6 pinctrl: esp32s31: expose GPIO edge interrupts
-3ade5d2 iio: enable Mosaico sensors, the AI key and vibration motor
-99e3627 clk: esp32s31: describe AXI DMA and camera clock domains
-3d8f19c dmaengine: add ESP32-S31 AXI receive channels
-60b93e0 media: i2c: add SC101IOT VGA capture mode support
-24d42b2 media: add Mosaico DVP capture and removable camera management
-a6a0f36 clk: esp32s31: add AHB DMA and fractional I2S master clocks
-c09534f dmaengine: add ESP32-S31 AHB cyclic peripheral channels
-0a2ad76 ASoC: add the ESP32-S31 I2S CPU interface
-dc117db riscv: dts: connect Mosaico ES8311 audio and its speaker route
-c10c8bf usb: enable Mosaico manual OTG roles and HID input
+f8f2b4e input: touchscreen: add the Hynitron CST9220 controller
+2ad4732 fbdev: add a CO5300 QSPI framebuffer with dirty-region updates
+a0d2a09 riscv: dts: enable the Mosaico display and touchscreen
+51e3209 pinctrl: esp32s31: expose GPIO edge interrupts
+2851d25 iio: enable Mosaico sensors, the AI key and vibration motor
+87fc06f clk: esp32s31: describe AXI DMA and camera clock domains
+f833749 dmaengine: add ESP32-S31 AXI receive channels
+bc4142b media: i2c: add SC101IOT VGA capture mode support
+4237ee0 media: add Mosaico DVP capture and removable camera management
+f49ea2a clk: esp32s31: add AHB DMA and fractional I2S master clocks
+e8797fd dmaengine: add ESP32-S31 AHB cyclic peripheral channels
+ff3b5f3 ASoC: add the ESP32-S31 I2S CPU interface
+d710c68 riscv: dts: connect Mosaico ES8311 audio and its speaker route
+eb2456a usb: enable Mosaico manual OTG roles and HID input
 ```
 
 ## application
@@ -62,8 +64,8 @@ c10c8bf usb: enable Mosaico manual OTG roles and HID input
 Base: `peripheral`.
 
 ```text
-4c87ffb applications: add a reconnecting V4L2 camera preview
-081d971 buildroot: package the manual Mosaico camera preview
+ee5697e applications: add a reconnecting V4L2 camera preview
+a5146e1 buildroot: package the manual Mosaico camera preview
 ```
 
 ## Review and verification
@@ -101,11 +103,11 @@ Host-only checks performed after reorganization:
 - Added files were checked for private keys and concrete Wi-Fi credentials.
   No personal filesystem archive or raw serial log is committed.
 
-These checks reuse the installed compiler, prepared ESP-Hosted sources
-and firmware from the existing local build. They do not constitute a fresh
-end-to-end loader, toolchain and rootfs build. No reconstructed image was
-flashed. The live board, debug recorder, NAND configuration and SDK checkout
-were left as they were before this task.
+The checks above describe the initial stack preparation, which reused an
+existing local toolchain and did not flash the board. Subsequent fresh
+end-to-end builds and native USB hardware checks are recorded separately
+in [stack-validation.md](stack-validation.md), with source revisions and
+remaining failures.
 
 Historical hardware results and unresolved issues, including preview
 tearing, quiet audio, magnetic interference and the unresponsive battery
