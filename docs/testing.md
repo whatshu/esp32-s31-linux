@@ -276,6 +276,35 @@ do not establish a faulty sensor or a compensation bug.
 
 ## Native Type-C USB
 
+On 2026-10-29, kernel #39 and the updated rootfs passed a complete native
+USB flash and boot cycle. CH343 remained the debug console at 115200 baud
+with the same recorder PID throughout. After `reboot bootloader`, ROM
+appeared as `303a:0020`; esptool reported USB-OTG and verified all seven
+written regions. The flashing helper cleared FORCE_DOWNLOAD_BOOT and
+triggered the watchdog on that same connection, returned success and
+Linux booted without pressing RESET. NAND overlay and both swap devices
+mounted normally.
+
+Linux then automatically enumerated as `0525:a4a7` CDC ACM, with UDC
+`configured` at high speed. A temporary raw echo process on
+`/dev/ttyGS0` returned 262,144 bytes in each direction in 0.192 seconds;
+all bytes matched, including all 256 byte values. This is a functional
+loopback check, not a bulk-throughput benchmark. The echo process was
+stopped after the test. Repeated init start, stop/start and restart also
+restored enumeration without UDC start/stop warnings. Keyboard/mouse
+hardware validation is still pending: the first device-to-host switch with
+a mouse attached stopped responding without an Oops or panic in the UART
+log. Removing the adapter did not restore the console; RESET did. The
+role-switch path is under investigation and host support is not yet
+validated.
+
+The earlier two-process flash/reset helper verified flash but could fail
+while reconnecting to the active USB stub, even though the board reset.
+The current helper uses one connection through verification and reset;
+it never resets after a failed write or verification. Host-side script
+tests cover rejected USB identities, image parsing, overlapping erase
+sectors and reset ordering.
+
 Keep the external UART connected. V1.2 does not route HUSB320 role signals
 to the SoC, so select the USB data role explicitly. The default is device
 mode; HUSB320 controls the power direction independently.

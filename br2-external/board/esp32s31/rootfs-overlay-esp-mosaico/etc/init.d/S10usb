@@ -2,6 +2,8 @@
 # SPDX-License-Identifier: MIT
 # HUSB320 controls VBUS; select the data role through /sys/class/usb_role/.
 
+stopped=/run/usb-gadget.stopped
+
 case "$1" in
 start)
 	modprobe dwc2 || exit 1
@@ -10,19 +12,34 @@ start)
 	modprobe mousedev || exit 1
 	# A serial data channel; no additional login service is started.
 	modprobe g_serial use_acm=1 || exit 1
-	for udc in /sys/class/udc/*; do
-		[ -e "$udc/soft_connect" ] || continue
-		echo connect > "$udc/soft_connect"
+	# Apply the default after gadget binding so its connection is enabled.
+	# Preserve a host role explicitly selected through sysfs.
+	for role in /sys/class/usb_role/*/role; do
+		[ -e "$role" ] || continue
+		case "$(cat "$role")" in
+		none) echo device > "$role" || exit 1 ;;
+		host) continue ;;
+		esac
+		if [ -e "$stopped" ]; then
+			for udc in /sys/class/udc/*; do
+				[ -e "$udc/soft_connect" ] || continue
+				echo connect > "$udc/soft_connect" || exit 1
+			done
+			rm -f "$stopped"
+		fi
 	done
 	;;
 stop)
+	[ -d /sys/module/g_serial ] || exit 0
+	[ ! -e "$stopped" ] || exit 0
 	for udc in /sys/class/udc/*; do
 		[ -e "$udc/soft_connect" ] || continue
-		echo disconnect > "$udc/soft_connect"
+		echo disconnect > "$udc/soft_connect" || exit 1
 	done
+	: > "$stopped"
 	;;
 restart|reload)
-	"$0" stop
+	"$0" stop || exit 1
 	"$0" start
 	;;
 *)
