@@ -858,9 +858,12 @@ implementation does not provide proportional intensity control. It is
 off at probe and stops when the input device closes. Boot does not play
 an effect.
 
-The 2026-10-28 local build registers the GPIO7 AI key through gpio-keys.
-An earlier on-device kernel exposed the interrupt in /proc/interrupts;
-physical press/release events and the final image still need verification.
+Validation on 2026-10-29 with kernel `#34` captured an AI press and release
+as `KEY_PROG1` values 1 and 0, about 200 ms apart. The GPIO7 interrupt count
+increased from 0 to 2. A second press/release, about 240 ms apart, increased
+the count to 4 and triggered the motor test. These checks exercise both
+interrupt edges; long holds, rapid repeated presses and the newer image
+still need verification.
 
 Validation on 2026-10-28 loaded the Bosch initialization image and read
 all six BMI270 motion axes and temperature. Both BMM150 devices probe
@@ -868,11 +871,53 @@ and return samples. **Known limitation:** address `0x12` repeatedly
 returns `-2147483648` for Y. This is the driver's overflow sentinel,
 not a usable magnetic-field measurement. The other five magnetic axes
 return finite values. The source of that overflow has not been
-determined, and compass accuracy is not validated. A temporary evdev
-program submitted and stopped a 150 ms motor effect successfully; that
-checks the software path, not a measured motor amplitude. A five-second
+determined, and compass accuracy is not validated. On 2026-10-29 the user
+confirmed three separate vibrations from three 150 ms `FF_RUMBLE` effects.
+The temporary test stopped each effect and closed the device after the
+sequence; motor amplitude and current were not measured. A five-second
 idle sample used approximately 0.6% CPU with the preview stopped and
 input devices closed.
+
+A stationary check on 2026-10-29 collected 20 sets of all 13 raw sensor
+channels at 5 Hz without read errors. The BMI270 acceleration vector had
+a mean magnitude of 9.83 m/s² using its reported scale; mean angular rates
+were within 0.0025 rad/s of zero. A separate three-minute, 900-set capture
+also had no read errors, but every `0x12` Y sample was the overflow
+sentinel. Each set used sequential sysfs reads, taking 5 to 8 ms; these
+are functional checks, not synchronized scans or a calibration.
+
+A subsequent AI-triggered, 60-second capture recorded 300 sets during
+user-operated forward/back and left/right tilts, horizontal X/Y movement,
+and rotation about the gravity axis. All three accelerometer and gyroscope
+axes responded, then settled when the device was put down. The final
+five-second mean acceleration magnitude was 9.83 m/s². There were no read
+errors. All three `0x11` magnetic axes and the `0x12` X/Z axes changed
+during motion, but all 300 `0x12` Y readings remained overflow samples.
+This validates motion response, not axis mounting, absolute accuracy or
+compass heading.
+
+The upstream Y compensation path returns this sentinel when the signed
+raw Y register value is `-4096`. Section 4.6.6 of the Bosch
+[BMM150 datasheet](https://www.bosch-sensortec.com/media/boschsensortec/downloads/datasheets/bst-bmm150-ds001.pdf)
+defines that raw value as an X/Y measurement overflow. The software must
+retain it as invalid data rather than scale it into a magnetic field.
+The tested enclosure has rear permanent magnets, as confirmed by the
+user. Their positions relative to the sensors stay fixed during whole-body
+rotation. The valid magnetic readings also have a large fixed component:
+the `0x12` X axis remained around -1040 to -1090 µT and Z around 580 to
+640 µT during the motion test. Magnetic influence from the assembly is
+therefore a plausible explanation for the saturation; the measurements
+do not establish a faulty sensor or a compensation bug.
+
+The official BSP's
+[magnetic interaction example](https://github.com/esp-mosaico/esp-mosaico-bsp/tree/7cbfb390638dcb93522fc3cde094b2d43cf907c2/examples/magnetic_interaction_demo)
+uses the two sensors for magnetic contact classification. Its prototype
+profile includes baseline and saturation handling and is specific to its
+tested magnets and enclosure. Linux exposes the upstream IIO measurements;
+it does not yet provide that application-level classifier. Calibration
+cannot recover an already saturated axis. The present result is a
+measurement limitation with the assembled device, not a confirmed hardware
+failure or a validated six-axis magnetic measurement.
 
 Several power parts operate autonomously. The HUSB320 has its SCL/OUT2
 and SDA/OUT1 pins unconnected in this schematic, so no I2C Type-C driver
@@ -977,12 +1022,13 @@ sound.
 
 The 2026-10-28 local build passes compilation, zero-fuzz patch application,
 new binding validation and strict checkpatch. An earlier on-device kernel
-registered the GPIO7 AI interrupt and DWC2 UDC. AI press/release events,
-actual PC USB enumeration, the final FIFO configuration and audio DMA
-capture still require validation on the updated image. The board stopped
+registered the GPIO7 AI interrupt and DWC2 UDC. AI press/release events
+were subsequently verified on kernel `#34`, as described above. Actual
+PC USB enumeration, the final FIFO configuration and audio DMA capture
+still require validation on the updated image. The board stopped
 responding after the experimental USB role switch; software UART and ROM
-probes could not recover it. No audio stream has been run. The motor's
-150 ms effect reached evdev; physical vibration needs user confirmation.
+probes could not recover it. No audio stream has been run. Physical motor
+vibration was subsequently confirmed by the user on 2026-10-29.
 
 On 2026-10-29 the user reset the unresponsive board. Its retained boot
 messages identify kernel `#34` from 2026-10-28 21:02:14 and a DWC2 WARNING
@@ -991,6 +1037,11 @@ Linux remains responsive after that warning, with `panic_on_warn=0` and
 `panic_on_oops=0`. This is not evidence of the earlier panic's cause; its
 original exception was not captured. The newer fixed-role/FIFO image has
 not been flashed. Continuous host UART recording is now enabled.
+
+A subsequent report of a trace remaining on the LCD was checked through
+the external camera and `/dev/vcs1`. The screen's addresses and timestamps
+matched that same boot-time USB warning. UART commands still completed,
+and a fresh `dmesg` contained no newer Oops or panic.
 
 ### BQ27220 battery gauge
 
