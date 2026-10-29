@@ -36,7 +36,7 @@ def main() -> int:
     except (FatalError, serial.SerialException) as error:
         print(f"reset failed: {error}", file=sys.stderr)
         return 1
-    print("Download mode cleared; reconnect the UART console at 115200 baud.")
+    print("Download mode cleared; boot output is on the debug UART at 115200 baud.")
     return 0
 
 

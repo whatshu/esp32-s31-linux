@@ -38,16 +38,16 @@ correction described below.
 | Power management | Hardware charging is reported by the user | Linux shutdown on V1.2 and power consumption are unverified. |
 | BQ27220 | BSP-equivalent requests at `0x55` time out | Support is deferred; no node or driver is enabled. |
 
-Sensor interrupt buffers, a magnetic contact classifier, runtime USB role
-switching, additional camera modes, simultaneous audio capture/playback,
+Sensor interrupt buffers, a magnetic contact classifier,
+additional camera modes, simultaneous audio capture/playback,
 IEEE 802.15.4 and Linux NOR XiP are not implemented. They are outside the
 current test coverage rather than tests awaiting a pass. The SAM8108 latch
 and charge LEDs remain hardware-controlled; Linux uses the existing SBI
 shutdown path. Programmable battery monitoring is blocked by the gauge's
 missing response.
 
-The current pass is limited to user-triggered speaker playback followed by
-fixed-peripheral USB enumeration and data transfer. Reliability and stress
+The current pass covers user-triggered speaker playback and USB host/device
+roles, including keyboard and mouse input. Reliability and stress
 checks listed above are not part of this pass. Retain UART recording and
 do not start audible playback without a physical user key press.
 
@@ -92,17 +92,11 @@ Git. They can contain shell output and credentials: do not publish or commit
 captures without redacting them. The recorder stores no separate transmit log;
 commands echoed by the board still appear in received output.
 
-For flashing, send `reboot bootloader` through the proxy first, then stop
-recording to release the UART:
-
-```sh
-systemctl --user stop esp-mosaico-serial.service
-# Run esptool and scripts/reset-from-bootloader.py on the physical PORT.
-# Run the systemd-run command again after releasing the physical port.
-```
-
-Do not leave recording active while esptool uses the physical UART at a
-different baud rate. A foreground recorder stops with Ctrl-C or SIGTERM.
+For ESP-Mosaico flashing, send `reboot bootloader` through the proxy, then
+use the native Type-C ROM USB port with `scripts/flash-esp-mosaico.py`.
+Keep CH343 recording at 115200 throughout entry, flashing and reboot; do
+not give the debug UART to esptool. A foreground recorder stops with Ctrl-C
+or SIGTERM.
 After a panic, keep power applied and stop issuing commands while preserving
 the logs. The current kernel does not enable pstore, KGDB or Magic SysRq; a
 reset loses its volatile log and register state. UART recording retains only
@@ -282,21 +276,40 @@ do not establish a faulty sensor or a compensation bug.
 
 ## Native Type-C USB
 
-Connect a data-capable Type-C cable to a computer while retaining the
-external UART. The expected gadget is CDC ACM on `/dev/ttyGS0`.
-The computer should enumerate a USB ACM port. Check the UDC state with:
+Keep the external UART connected. V1.2 does not route HUSB320 role signals
+to the SoC, so select the USB data role explicitly. The default is device
+mode; HUSB320 controls the power direction independently.
+
+For a keyboard or mouse, connect a Type-C OTG adapter and select host mode:
 
 ```sh
+for role in /sys/class/usb_role/*/role; do echo host > "$role"; done
+cat /proc/bus/input/devices
+evtest
+```
+
+Require USB enumeration, a bound generic HID driver and actual keyboard
+key-down/key-up or mouse motion/button events. The keyboard also feeds the
+panel's `tty1` console. Mouse applications can use evdev or `/dev/input/mice`;
+the text console does not provide a graphical pointer.
+
+Before connecting a data-capable Type-C cable to a computer, select device
+mode. The expected gadget is CDC ACM on `/dev/ttyGS0`:
+
+```sh
+for role in /sys/class/usb_role/*/role; do echo device > "$role"; done
 for d in /sys/class/udc/*; do
     echo "$d: $(cat "$d/state")"
 done
 ```
 
-On the updated image, require host enumeration, `configured` UDC state,
-bidirectional byte comparison and unplug/replug recovery. Measure sustained
-throughput and check the kernel log. Do not infer success from UDC probe
-alone, or attempt runtime host/device switching. `S10usb stop` disconnects
-the gadget without unloading the controller.
+Require PC enumeration, `configured` UDC state and a bidirectional byte
+comparison. Do not infer success from UDC probe alone. Check the kernel log
+and verify that `reboot bootloader`, native USB flashing and return to Linux
+work with USB enabled, while CH343 recording remains active. Verify the
+ROM USB identity separately from Linux CDC ACM; a successful UART flash
+does not validate this path. `S10usb stop` disconnects the gadget without
+unloading the controller or changing its role.
 
 ### Build and runtime record
 
@@ -306,6 +319,21 @@ flashed on 2026-10-29: kernels `#37` and `#38` register the DWC2 UDC and load
 `g_serial` without the earlier FIFO warning. PC enumeration and data
 transfer remain unverified. An earlier experimental USB role switch left
 the board unresponsive; software UART and ROM probes could not recover it.
+
+The subsequent dual-role/HID build, kernel `#39`, boots and loads DWC2,
+`usbhid`, `hid_generic`, `mousedev` and `g_serial`. Its 4,681,556-byte kernel
+and 9,203,712-byte squashfs fit the NOR partitions. All 31 kernel patches
+apply at zero fuzz, the USB DT bindings and strict checkpatch pass, and
+stripping the 53 installed modules preserves their allocated sections
+and relocations. This image was written through CH343 before the flashing
+workflow was corrected. Native USB flashing and host HID input still need
+physical verification; the current UDC state is `not attached`.
+
+The native USB flashing helper rejects CH343, Serial/JTAG, Linux gadget,
+unidentified and unrelated USB ports before invoking esptool. Host-side
+tests cover this rejection, ROM USB selection through a symlink and leaving
+the downloader available after a failed write. These checks do not replace
+an actual ROM USB flash followed by a Linux boot with continuous UART logs.
 
 On 2026-10-29 the user reset the unresponsive board. Its retained boot
 messages identify kernel `#34` from 2026-10-28 21:02:14 and a DWC2 WARNING

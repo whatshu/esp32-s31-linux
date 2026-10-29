@@ -595,31 +595,47 @@ needed. Ordinary `reboot` selects `normal`; poweroff does not apply the
 saved choice. Direct callers of Linux's `RESTART2` API can also pass
 `bootloader` without the wrapper.
 
-Once the UART reports `waiting for download`, close the serial monitor and
-flash with the tested esptool version, bypassing unavailable RTS/DTR lines:
+CH343 carries the debug UART at 115200 baud; it is not the flashing port.
+Keep its recorder open. Connect the board's native Type-C port to the
+computer with a data cable. Once the UART reports `waiting for download`,
+select the newly enumerated ROM USB CDC port, rather than the Linux gadget
+port or CH343. Flash with the tested esptool environment:
 
 ```sh
-esptool --chip esp32s31 -p PORT -b 921600 --before no-reset \
-    --after no-reset write-flash @flash_args
-python3 scripts/reset-from-bootloader.py --port PORT --baud 921600
+make -s flash-args BOARD=esp-mosaico > build/esp-mosaico/flash_args
+python3 scripts/flash-esp-mosaico.py --port USB_PORT @build/esp-mosaico/flash_args
 ```
 
-Use the release bundle's `flash_args`, or generate it with
-`make flash-args BOARD=esp-mosaico`. Run the helper in the Python
-environment containing the tested esptool. It clears only the
-forced-download bit and resets through the watchdog, preserving the other
-LP_SYSTEM bits. Reconnect the UART console at 115200 baud. Keep 921600 for
-the reset command when the flasher left the UART at that rate; a fresh ROM
-session starts at 115200. A reset without clearing the forced-download bit
-returns to the ROM downloader.
+If Linux cannot start, hold BOOT, press and release RESET, then release
+BOOT to enter ROM downloading without relying on Linux USB drivers.
+
+In a release bundle, use `python3 flash-esp-mosaico.py --port USB_PORT
+@flash_args`. The helper refuses USB UART bridges and Linux gadgets before
+opening the port: the expected ROM USB identity is Espressif `303a:0020`.
+It flashes without RTS/DTR reset and then calls
+`reset-from-bootloader.py`. That helper clears only the forced-download bit
+and resets through the watchdog, preserving the other LP_SYSTEM bits. A
+reset without clearing the bit returns to the ROM downloader. To retry
+only the return step after a completed flash, run:
+
+```sh
+python3 scripts/reset-from-bootloader.py --port USB_PORT --baud 921600
+```
+
+The USB connection disappears during reset and Linux initializes DWC2
+again at boot. ROM USB downloading and Linux OTG own the same controller
+at different times; the running Linux gadget is not a flashing interface.
+The USB device name can change across these transitions. The CH343 debug
+connection remains independent throughout.
 
 ### Continuous UART recording
 
 `scripts/serial-record.py` records the physical UART before forwarding it
 to a console proxy. It reconnects after USB disconnection and limits its
-rotating logs to 15 MB. Console clients use the proxy; flashing requires
-releasing the physical port. Logs stay in ignored `logs/serial/` and can
-contain private data. See [test recording](testing.md#uart-recording) for
+rotating logs to 15 MB. Console clients use the proxy; ESP-Mosaico flashing
+uses the separate native USB connection, so recording stays active. Logs
+stay in ignored `logs/serial/` and can contain private data. See
+[test recording](testing.md#uart-recording) for
 commands, capture limits and panic handling.
 
 ### Execution and memory
@@ -742,17 +758,34 @@ from the external CH343 UART bridge and GPIO33/34 Serial/JTAG pads. The
 HUSB320 controls CC detection and power direction autonomously; its
 unconnected I2C pins do not provide role notifications to Linux.
 
-ESP-Mosaico selects **fixed peripheral mode**. `S10usb` loads DWC2 and
-`g_serial use_acm=1`, exposing a CDC ACM data channel at `/dev/ttyGS0`.
-No login service runs on that port. `S10usb stop` disconnects the gadget
-without unloading the controller. Runtime host/device switching is
-unsupported; other boards retain their host configurations.
+ESP-Mosaico enables DWC2 dual-role mode and the standard
+`/sys/class/usb_role/*/role` interface. It defaults to `device`; select
+`host` when attaching peripherals through a Type-C OTG adapter, and select
+`device` before connecting to a computer. These are data-role selections:
+the HUSB320 still controls VBUS. Its disconnected ID, interrupt and I2C
+pins prevent automatic cable-role detection by Linux.
 
-The generic PHY receives the fixed controller mode after initialization
-and before power-on, so peripheral mode removes host pull-downs. All seven
+`S10usb` loads DWC2, generic USB HID, the mouse interface and
+`g_serial use_acm=1`. Host keyboards use the VT console and input events;
+mice expose input events and `/dev/input/mice`. In device mode, CDC ACM
+is `/dev/ttyGS0`, without a login service. `S10usb stop` disconnects the
+gadget without unloading the controller or changing its role. The CH343
+UART remains the debug console. `reboot bootloader` shuts Linux down and
+hands the native USB controller to ROM for downloading; after flashing,
+reset returns ownership to Linux. Neither Linux gadget CDC nor the CH343
+debug bridge is used as the ROM flashing port.
+
+The generic PHY receives fixed modes after initialization and before
+power-on, and dual-role mode changes before the controller changes role.
+This enables the software-controlled host pull-downs only in host mode;
+PHY reinitialization restores the last mode. All seven
 endpoint TX FIFO sizes are explicit: RX 384 words, EP0 TX 64, remaining
 TX FIFOs 128/128/16/16/16/16/16, totaling 784 of 896 words. Gadget buffer
 and descriptor DMA remain disabled.
+
+Installed kernel modules are stripped with `--strip-unneeded`, preserving
+relocation targets while removing unused RISC-V assembler labels. The build
+tree retains the original objects and debug information.
 
 ### I2S and ES8311 audio
 

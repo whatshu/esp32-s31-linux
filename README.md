@@ -38,9 +38,9 @@ erases both NAND partitions. Boot never formats NAND automatically. See
 and [display and touch](docs/internals.md#display-and-touch) for those drivers.
 See [camera](docs/internals.md#esp-mosaico-camera) for module handling and limits.
 The board also exposes the BMI270 IMU and two BMM150 magnetometers through
-IIO, an interrupt-driven AI button and a GPIO vibrator. Native Type-C CDC
-ACM and ES8311/I2S DMA audio support are implemented, with final hardware
-validation pending. See
+IIO, an interrupt-driven AI button and a GPIO vibrator. Native Type-C
+host/device roles, USB HID and CDC ACM are implemented; USB hardware
+validation is pending. ES8311/I2S DMA audio provides speaker playback. See
 [on-board peripherals](docs/internals.md#esp-mosaico-on-board-peripherals)
 for their interfaces and current limitations.
 
@@ -51,25 +51,33 @@ for their interfaces and current limitations.
 3. Connect the UART port of the board. On the Korvo-1, this is the UART
    Type-C port. The USB bridge is a CP2102N on the Korvo-1 and the
    Function-CoreBoard-1. Some Function-CoreBoard-1 boards have a CH9102X.
+   On ESP-Mosaico, keep the CH343 connected for debugging and connect the
+   native Type-C separately for flashing, as described below.
 4. Flash: `esptool --chip esp32s31 -p PORT -b 921600 write-flash 0x0 flash.bin`
+   For ESP-Mosaico, use the USB procedure below instead.
 5. Write the disk image, for example with balenaEtcher. All data on the
    disk is lost. Korvo-1: write `*-korvo1-sdcard.img.xz` to a microSD card.
    Function-CoreBoard-1: write `*-coreboard1-usb.img.xz` to a USB stick.
    Put the disk into the board. The module-alone and ESP-Mosaico builds
    use a rootfs in flash and need no disk.
-6. Open a terminal on the same port at 115200 baud. Push reset. When the
+6. Open a terminal on the UART port at 115200 baud. Push reset. When the
    console shows `=== ESP32-S31 Linux / Buildroot ===`, you are root.
 
 On the Korvo-1, the LCD also shows a console. Connect a USB keyboard and
 log in on `tty1`: it starts a `tmux` desktop.
 
-On ESP-Mosaico, `reboot bootloader` enters ROM download mode after an
-orderly shutdown. For bridges without reset wiring, flash with
-`--before no-reset --after no-reset`, then return to Linux with:
+On ESP-Mosaico, CH343 is the debug console only. Run `reboot bootloader`
+from that console, then flash through the native Type-C ROM USB port:
 
 ```sh
-python3 scripts/reset-from-bootloader.py --port PORT --baud 921600
+make flash BOARD=esp-mosaico FLASH_PORT=USB_PORT
 ```
+
+The helper checks the ROM USB identity and returns to Linux after flashing;
+UART recording can stay open throughout. ROM downloading and Linux OTG use
+the Type-C port at different boot stages. See the
+[download procedure](docs/internals.md#reboot-into-the-rom-downloader) for
+flashing an existing build or release bundle.
 
 ### Wi-Fi
 
