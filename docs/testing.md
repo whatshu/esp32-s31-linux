@@ -32,7 +32,7 @@ correction described below.
 | BMI270 | Initialization, temperature reads, stationary and motion response checked | Mounting axes, calibration and physical accuracy are unverified. |
 | Two BMM150 sensors | Both probe; five magnetic axes respond | `0x12` Y overflows in this magnetic assembly; six-axis magnetic measurements and heading are unverified. |
 | Native Type-C USB | Updated image registers the UDC and loads `g_serial` without the FIFO warning | Host enumeration and bidirectional transfers remain unverified. |
-| ES8311 / I2S / DMA | Card probes; 16 kHz stereo DMA and amplifier-off routing checked | User reported no sound on the initial tone test; revised playback awaits confirmation. Recording and other rates remain unverified. |
+| ES8311 / I2S / DMA | User heard the AI-triggered 0.5 s, 440 Hz tone at BSP 50%; amplifier-off routing checked | Output was quiet. Recording and other rates remain unverified. |
 | Camera | VGA MMAP capture and physical reconnect with the temporary preview checked | DMA-BUF import, boot without the module and repeated hotplug cycles remain unverified. |
 | Bluetooth | Shared radio firmware provides the controller | V1.2 BLE and BR/EDR scan, connection and data transfer lack a hardware validation record. |
 | Power management | Hardware charging is reported by the user | Linux shutdown on V1.2 and power consumption are unverified. |
@@ -369,7 +369,10 @@ speaker afterward and waits for another press. Its volume follows the
 50% maps to -25 dB, with the BSP's 3.3 V / 5 V hardware-gain compensation
 giving ES8311 DAC register value 148 (-21.5 dB). The initial test used raw
 128 (-31.5 dB), which is half the register range but differs from BSP 50%.
-Audible output on the revised setup remains pending user confirmation.
+The user confirmed audible, quiet output on this setup. They noted that the
+initial test might also have been audible at low volume, so its reported
+silence is not a confirmed amplifier failure. The program was stopped after
+confirmation; the speaker switch is off and GPIO45 reads low.
 
 ## Battery gauge
 
