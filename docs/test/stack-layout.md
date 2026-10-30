@@ -75,6 +75,7 @@ Base: `peripheral`.
 61b46b9 applications: allow embedding the camera preview in a launcher
 5d1353c applications: add an on-demand LVGL peripheral test launcher
 166cd8a buildroot: package the manual Mosaico peripheral test launcher
+1849f4e applications: visualize Mosaico motion and magnetic sensors
 ```
 
 ## Review and verification
