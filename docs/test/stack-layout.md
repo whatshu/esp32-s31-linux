@@ -24,7 +24,7 @@ at boot. The full LVGL image's native USB programming and board checks are
 recorded in [lvgl-validation.md](lvgl-validation.md), including exact source
 revision, physical touch confirmation and remaining validation limits.
 The current history consolidation and its mapping to tested revisions are in
-[stack-consolidation.md](stack-consolidation.md).
+[stack-consolidation.md](stack-consolidation.md). The subsequent host-script audit and current branch tips are in [script-portability.md](script-portability.md).
 
 ## bsp
 
@@ -41,6 +41,7 @@ d8d0783 power: reset: support orderly ESP32-S31 ROM download reboots
 fd96d4b scripts: retain bounded UART logs behind a console proxy
 0b984f9 scripts: flash Mosaico over native ROM USB and return to Linux
 0fa1e65 build: refresh CI kernel sources when stack inputs change
+f5015fc build: select host tools from the configured ESP-IDF environment
 ```
 
 ## peripheral
@@ -48,20 +49,20 @@ fd96d4b scripts: retain bounded UART logs behind a console proxy
 Base: `bsp`.
 
 ```text
-b23bb60 input: touchscreen: add the Hynitron CST9220 controller
-3e113b2 fbdev: add a CO5300 QSPI framebuffer with dirty-region updates
-f8dd64e riscv: dts: enable the Mosaico display and touchscreen
-b150c2f pinctrl: esp32s31: expose GPIO edge interrupts
-c3168bd iio: enable Mosaico sensors, the AI key and vibration motor
-96c88b7 clk: esp32s31: describe AXI DMA and camera clock domains
-53d48d6 dmaengine: add ESP32-S31 AXI receive channels
-40b03e8 media: i2c: add SC101IOT VGA capture mode support
-dec4092 media: add Mosaico DVP capture and removable camera management
-b0f9c4e clk: esp32s31: add AHB DMA and fractional I2S master clocks
-2f27877 dmaengine: add ESP32-S31 AHB cyclic peripheral channels
-1fdbdf7 ASoC: add the ESP32-S31 I2S CPU interface
-a6cd6c9 riscv: dts: connect Mosaico ES8311 audio and its speaker route
-7276869 usb: enable Mosaico manual OTG roles and HID input
+f3fdd8f input: touchscreen: add the Hynitron CST9220 controller
+1af1e1c fbdev: add a CO5300 QSPI framebuffer with dirty-region updates
+82603a5 riscv: dts: enable the Mosaico display and touchscreen
+ce95847 pinctrl: esp32s31: expose GPIO edge interrupts
+8b603c9 iio: enable Mosaico sensors, the AI key and vibration motor
+09fa31c clk: esp32s31: describe AXI DMA and camera clock domains
+791454d dmaengine: add ESP32-S31 AXI receive channels
+6e3cb45 media: i2c: add SC101IOT VGA capture mode support
+3bf5a89 media: add Mosaico DVP capture and removable camera management
+e7ff44d clk: esp32s31: add AHB DMA and fractional I2S master clocks
+aeecae6 dmaengine: add ESP32-S31 AHB cyclic peripheral channels
+75da30a ASoC: add the ESP32-S31 I2S CPU interface
+27e96a5 riscv: dts: connect Mosaico ES8311 audio and its speaker route
+8942fff usb: enable Mosaico manual OTG roles and HID input
 ```
 
 ## application
@@ -69,13 +70,13 @@ a6cd6c9 riscv: dts: connect Mosaico ES8311 audio and its speaker route
 Base: `peripheral`.
 
 ```text
-090695d applications: add a reconnecting V4L2 camera preview
-66ca6a8 buildroot: package the manual Mosaico camera preview
-bf66f7b applications: pin LVGL as a source submodule
-6ac0a98 applications: allow embedding the camera preview in a launcher
-8533b9a applications: add an on-demand LVGL peripheral test launcher
-9c66bc3 buildroot: package the manual Mosaico peripheral test launcher
-b264e8a applications: add reproducible LVGL interface examples
+172c4a4 applications: add a reconnecting V4L2 camera preview
+9f20d88 buildroot: package the manual Mosaico camera preview
+1025def applications: pin LVGL as a source submodule
+b5c8543 applications: allow embedding the camera preview in a launcher
+cf6c546 applications: add an on-demand LVGL peripheral test launcher
+e559ce3 buildroot: package the manual Mosaico peripheral test launcher
+4de2d0a applications: add reproducible LVGL interface examples
 ```
 
 ## Review and verification
