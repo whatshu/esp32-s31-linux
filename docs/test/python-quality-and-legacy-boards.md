@@ -110,9 +110,22 @@ no repository remote configuration was changed.
 
 ## Recovery status
 
-The known-good dark Mosaico firmware is retained locally as a seven-image
-restore bundle; every image matches its recorded SHA256. The device is
-currently running generic esp32s31 after its successful reboot test.
-Physical BOOT/RESET has been requested so the bundle can be restored through
-native USB. NAND persistence and configuration hashes will be checked after
-that restoration; no restoration is claimed yet.
+After the user's physical BOOT/RESET, the known-good dark Mosaico firmware
+was restored through native ROM USB. All seven images matched their saved
+SHA256 before programming and passed esptool verification. Watchdog reset
+returned to Linux automatically. NAND UBIFS and low-priority NAND swap
+mounted normally; the framebuffer, touch and USB device interfaces returned.
+The kernel is untainted with no WARNING, BUG, Oops, panic or Call Trace in
+the checked boot log. Wi-Fi completed association and DHCP. Wi-Fi, SSH
+authorized keys and SSH host-key fingerprints all match the values saved
+before the generic-board test. The camera preview and LVGL launcher remain
+stopped. No audio or motor action was triggered.
+
+## Upstream status when preparing pull requests
+
+A subsequent read-only upstream check found main had advanced to
+086e52a6b9ae43a3bb07beb2557ea7595df8165b, 41 commits beyond this stack's
+baseline. A merge-tree check reports BSP conflicts in Makefile, the generic
+esp32s31 defconfig, docs/internals.md and scripts/reset-monitor.py. The stack
+branches were not rebased during firmware restoration. Synchronization and
+renewed validation are needed before marking an upstream PR ready.
