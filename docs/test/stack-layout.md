@@ -18,9 +18,10 @@ submodules; kernel overlays and integration patches stay in `linux/`.
 Full source trees, private captures and helper scripts remain ignored in
 `build/`, `vendor/` and `logs/`.
 
-The application series adds only the existing camera preview, with manual
-startup and hotplug recovery. A future LVGL peripheral test application
-belongs in a later application commit; none is implemented here.
+The published application series includes the manually started camera
+preview with hotplug recovery. Later local commits add an LVGL peripheral
+test interface; its combined camera validation is still pending. See
+[lvgl-validation.md](lvgl-validation.md) for the exact revision and status.
 
 ## bsp
 
