@@ -76,6 +76,8 @@ Base: `peripheral`.
 5d1353c applications: add an on-demand LVGL peripheral test launcher
 166cd8a buildroot: package the manual Mosaico peripheral test launcher
 1849f4e applications: visualize Mosaico motion and magnetic sensors
+358d618 applications: use a charcoal palette for the Mosaico launcher
+c29292d applications: add reproducible LVGL interface examples
 ```
 
 ## Review and verification
