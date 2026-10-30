@@ -66,7 +66,7 @@ The old hardware archive records those earlier tests. The observation USB
 camera currently faces the keyboard, so no visual screen confirmation is
 claimed from its image. No application was installed or running at boot.
 
-## Application: verification in progress
+## Application: initial failure
 
 Source before fixes: `a5146e1ede1e99836270ee289f9679c60e7078e4`.
 A full image built and programmed through native USB, verified and returned
@@ -90,3 +90,39 @@ patches stay in ignored local build paths.
 
 The verified BSP and peripheral heads above have been pushed to the fork.
 Application changes remain local until functional validation succeeds.
+
+## Memory correction and complete-image retest
+
+Reducing only CONFIG_ZSMALLOC_CHAIN_SIZE from 8 to 4 made the original
+full-frame preview complete 246 frames and exit normally after a bounded
+run. Physical zram allocation stayed near 1 MiB. An eight-line RGB tile
+then reduced application allocation from 337.5 KiB to 7.5 KiB. Its first
+bounded run completed 279 frames, mostly 9–10 fps, and exited normally.
+The smaller chains are a Mosaico peripheral configuration commit; tiling
+is a separate application commit. Swap sizes and priorities are unchanged.
+
+A reused BSP Buildroot output also exposed a CI cache problem: applying a
+peripheral defconfig did not reapply new kernel patches, so Kconfig silently
+omitted drivers. The incomplete image was rejected before flashing. The CI
+script now invalidates extracted kernel/headers/Hosted inputs in the same
+way as the project's container Makefile. A clean resolved configuration
+was checked before packaging.
+
+Final peripheral source: `515cfcbfd95c3acf8cc43972f8a4a024a3b8aac3`.
+Complete build/program/hash verification/automatic return passed. Image:
+4,681,556 bytes; squashfs: 9,310,208 bytes. NAND persistence, config hashes,
+Wi-Fi, SSH and a 1 MiB verified transfer passed. Camera: 60 frames, zero
+errors/gaps, 15.61 steady fps. CDC: 256 KiB in each direction, equality and
+SHA256 verified, 0.192 s. A first concurrent echo launch did not reach its
+ready marker; the sequential retry passed. No OOM or panic was recorded.
+
+Final application source before LVGL:
+`1d95296a25c290bc22745e178aeb4eb4bb1277d6`. Complete build/program/verification
+and automatic return passed. Image: 4,681,556 bytes; squashfs: 9,322,496 bytes.
+Startup/storage/configuration/network checks passed. The packaged preview
+completed 283 frames in 30.70 s, around 9.6–10 fps after startup, and exited
+cleanly without OOM. Four capture frames were flagged as errors and discarded.
+No application ran by default. A normal reboot retained the ordinary NAND
+test file and returned with the preview stopped. BSP remains unchanged at
+the independently tested e772163 head. All three stack branches were pushed
+to the fork; no PR was created.

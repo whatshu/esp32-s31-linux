@@ -57,6 +57,8 @@ e8797fd dmaengine: add ESP32-S31 AHB cyclic peripheral channels
 ff3b5f3 ASoC: add the ESP32-S31 I2S CPU interface
 d710c68 riscv: dts: connect Mosaico ES8311 audio and its speaker route
 eb2456a usb: enable Mosaico manual OTG roles and HID input
+071b6c1 riscv: reduce Mosaico zram allocation overhead
+515cfcb build: refresh CI kernel sources when stack inputs change
 ```
 
 ## application
@@ -64,8 +66,9 @@ eb2456a usb: enable Mosaico manual OTG roles and HID input
 Base: `peripheral`.
 
 ```text
-ee5697e applications: add a reconnecting V4L2 camera preview
-a5146e1 buildroot: package the manual Mosaico camera preview
+07ea4dc applications: add a reconnecting V4L2 camera preview
+3135718 buildroot: package the manual Mosaico camera preview
+1d95296 applications: convert camera frames in small RGB tiles
 ```
 
 ## Review and verification
