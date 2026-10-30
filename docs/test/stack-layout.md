@@ -23,6 +23,8 @@ hotplug recovery and the LVGL peripheral test interface. Both are stopped
 at boot. The full LVGL image's native USB programming and board checks are
 recorded in [lvgl-validation.md](lvgl-validation.md), including exact source
 revision, physical touch confirmation and remaining validation limits.
+The current history consolidation and its mapping to tested revisions are in
+[stack-consolidation.md](stack-consolidation.md).
 
 ## bsp
 
@@ -33,11 +35,12 @@ Base: `upstream/main`.
 636ddbe spi: add ESP32-S31 GPSPI masters and native memory operations
 4f30e58 mtd: spinand: use the one-byte bad-block marker on GD5F1GM7UE
 74d9f9c mtd: mtdswap: reserve ECC-protected marker pages when requested
-080b8b4 riscv: add minimal ESP-Mosaico CoreBoard V1.2 support
-be34151 buildroot: strip unused symbols from installed kernel modules
-4c573b7 power: reset: support orderly ESP32-S31 ROM download reboots
-891ae22 scripts: retain bounded UART logs behind a console proxy
-e772163 scripts: flash Mosaico over native ROM USB and return to Linux
+a1d2c0e riscv: add minimal ESP-Mosaico CoreBoard V1.2 support
+c3d2c95 buildroot: strip unused symbols from installed kernel modules
+d8d0783 power: reset: support orderly ESP32-S31 ROM download reboots
+fd96d4b scripts: retain bounded UART logs behind a console proxy
+0b984f9 scripts: flash Mosaico over native ROM USB and return to Linux
+0fa1e65 build: refresh CI kernel sources when stack inputs change
 ```
 
 ## peripheral
@@ -45,22 +48,20 @@ e772163 scripts: flash Mosaico over native ROM USB and return to Linux
 Base: `bsp`.
 
 ```text
-f8f2b4e input: touchscreen: add the Hynitron CST9220 controller
-2ad4732 fbdev: add a CO5300 QSPI framebuffer with dirty-region updates
-a0d2a09 riscv: dts: enable the Mosaico display and touchscreen
-51e3209 pinctrl: esp32s31: expose GPIO edge interrupts
-2851d25 iio: enable Mosaico sensors, the AI key and vibration motor
-87fc06f clk: esp32s31: describe AXI DMA and camera clock domains
-f833749 dmaengine: add ESP32-S31 AXI receive channels
-bc4142b media: i2c: add SC101IOT VGA capture mode support
-4237ee0 media: add Mosaico DVP capture and removable camera management
-f49ea2a clk: esp32s31: add AHB DMA and fractional I2S master clocks
-e8797fd dmaengine: add ESP32-S31 AHB cyclic peripheral channels
-ff3b5f3 ASoC: add the ESP32-S31 I2S CPU interface
-d710c68 riscv: dts: connect Mosaico ES8311 audio and its speaker route
-eb2456a usb: enable Mosaico manual OTG roles and HID input
-071b6c1 riscv: reduce Mosaico zram allocation overhead
-515cfcb build: refresh CI kernel sources when stack inputs change
+b23bb60 input: touchscreen: add the Hynitron CST9220 controller
+3e113b2 fbdev: add a CO5300 QSPI framebuffer with dirty-region updates
+f8dd64e riscv: dts: enable the Mosaico display and touchscreen
+b150c2f pinctrl: esp32s31: expose GPIO edge interrupts
+c3168bd iio: enable Mosaico sensors, the AI key and vibration motor
+96c88b7 clk: esp32s31: describe AXI DMA and camera clock domains
+53d48d6 dmaengine: add ESP32-S31 AXI receive channels
+40b03e8 media: i2c: add SC101IOT VGA capture mode support
+dec4092 media: add Mosaico DVP capture and removable camera management
+b0f9c4e clk: esp32s31: add AHB DMA and fractional I2S master clocks
+2f27877 dmaengine: add ESP32-S31 AHB cyclic peripheral channels
+1fdbdf7 ASoC: add the ESP32-S31 I2S CPU interface
+a6cd6c9 riscv: dts: connect Mosaico ES8311 audio and its speaker route
+7276869 usb: enable Mosaico manual OTG roles and HID input
 ```
 
 ## application
@@ -68,16 +69,13 @@ eb2456a usb: enable Mosaico manual OTG roles and HID input
 Base: `peripheral`.
 
 ```text
-07ea4dc applications: add a reconnecting V4L2 camera preview
-3135718 buildroot: package the manual Mosaico camera preview
-1d95296 applications: convert camera frames in small RGB tiles
-7c07574 applications: pin LVGL as a source submodule
-61b46b9 applications: allow embedding the camera preview in a launcher
-5d1353c applications: add an on-demand LVGL peripheral test launcher
-166cd8a buildroot: package the manual Mosaico peripheral test launcher
-1849f4e applications: visualize Mosaico motion and magnetic sensors
-358d618 applications: use a charcoal palette for the Mosaico launcher
-c29292d applications: add reproducible LVGL interface examples
+090695d applications: add a reconnecting V4L2 camera preview
+66ca6a8 buildroot: package the manual Mosaico camera preview
+bf66f7b applications: pin LVGL as a source submodule
+6ac0a98 applications: allow embedding the camera preview in a launcher
+8533b9a applications: add an on-demand LVGL peripheral test launcher
+9c66bc3 buildroot: package the manual Mosaico peripheral test launcher
+b264e8a applications: add reproducible LVGL interface examples
 ```
 
 ## Review and verification
