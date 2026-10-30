@@ -7,7 +7,9 @@ is part of this work.
 
 The branch chain is `upstream/main -> bsp -> peripheral -> application`.
 The requested original-project baseline is
-`annoyedmilk/esp32-s31-linux` main at `2f3eb1268edd1bb2ca002eb4be339a635003b1e4`.
+`annoyedmilk/esp32-s31-linux` main at `086e52a6b9ae43a3bb07beb2557ea7595df8165b`.
+The latest rebase and build checks are in
+[upstream-rebase-20261030.md](upstream-rebase-20261030.md).
 `origin/main` and local `main` retain the original fork history. The backup
 `archive/esp-mosaico-before-stack-20261029` points to `2729c3b413b0912ce7b02280b14608769f52ece9`.
 `rework/esp-mosaico` preserves the temporary upstream integration tree.
@@ -31,17 +33,17 @@ The current history consolidation and its mapping to tested revisions are in
 Base: `upstream/main`.
 
 ```text
-7cc422b build: isolate the patched ESP-IDF sources in a submodule
-636ddbe spi: add ESP32-S31 GPSPI masters and native memory operations
-4f30e58 mtd: spinand: use the one-byte bad-block marker on GD5F1GM7UE
-74d9f9c mtd: mtdswap: reserve ECC-protected marker pages when requested
-a1d2c0e riscv: add minimal ESP-Mosaico CoreBoard V1.2 support
-c3d2c95 buildroot: strip unused symbols from installed kernel modules
-d8d0783 power: reset: support orderly ESP32-S31 ROM download reboots
-fd96d4b scripts: retain bounded UART logs behind a console proxy
-0b984f9 scripts: flash Mosaico over native ROM USB and return to Linux
-0fa1e65 build: refresh CI kernel sources when stack inputs change
-f5015fc build: select host tools from the configured ESP-IDF environment
+7c46cda build: isolate the patched ESP-IDF sources in a submodule
+dcf5b86 spi: add ESP32-S31 GPSPI masters and native memory operations
+22d7ef2 mtd: spinand: use the one-byte bad-block marker on GD5F1GM7UE
+13a80b4 mtd: mtdswap: reserve ECC-protected marker pages when requested
+92d7ca9 riscv: add minimal ESP-Mosaico CoreBoard V1.2 support
+a2d56bf buildroot: strip unused symbols from installed kernel modules
+9439422 power: reset: support orderly ESP32-S31 ROM download reboots
+9dba1d2 scripts: retain bounded UART logs behind a console proxy
+722a628 scripts: flash Mosaico over native ROM USB and return to Linux
+8b58b90 build: refresh CI kernel sources when stack inputs change
+685efba build: select host tools from the configured ESP-IDF environment
 ```
 
 ## peripheral
@@ -49,20 +51,20 @@ f5015fc build: select host tools from the configured ESP-IDF environment
 Base: `bsp`.
 
 ```text
-f3fdd8f input: touchscreen: add the Hynitron CST9220 controller
-1af1e1c fbdev: add a CO5300 QSPI framebuffer with dirty-region updates
-82603a5 riscv: dts: enable the Mosaico display and touchscreen
-ce95847 pinctrl: esp32s31: expose GPIO edge interrupts
-8b603c9 iio: enable Mosaico sensors, the AI key and vibration motor
-09fa31c clk: esp32s31: describe AXI DMA and camera clock domains
-791454d dmaengine: add ESP32-S31 AXI receive channels
-6e3cb45 media: i2c: add SC101IOT VGA capture mode support
-3bf5a89 media: add Mosaico DVP capture and removable camera management
-e7ff44d clk: esp32s31: add AHB DMA and fractional I2S master clocks
-aeecae6 dmaengine: add ESP32-S31 AHB cyclic peripheral channels
-75da30a ASoC: add the ESP32-S31 I2S CPU interface
-27e96a5 riscv: dts: connect Mosaico ES8311 audio and its speaker route
-8942fff usb: enable Mosaico manual OTG roles and HID input
+270d691 input: touchscreen: add the Hynitron CST9220 controller
+1fb2096 fbdev: add a CO5300 QSPI framebuffer with dirty-region updates
+037eca6 riscv: dts: enable the Mosaico display and touchscreen
+3c76c2b pinctrl: esp32s31: expose GPIO edge interrupts
+1e54720 iio: enable Mosaico sensors, the AI key and vibration motor
+c33d0fe clk: esp32s31: describe AXI DMA and camera clock domains
+ff827df dmaengine: add ESP32-S31 AXI receive channels
+00c2003 media: i2c: add SC101IOT VGA capture mode support
+17754a1 media: add Mosaico DVP capture and removable camera management
+4139b3e clk: esp32s31: add AHB DMA and fractional I2S master clocks
+628eda9 dmaengine: add ESP32-S31 AHB cyclic peripheral channels
+ed32e69 ASoC: add the ESP32-S31 I2S CPU interface
+b771c45 riscv: dts: connect Mosaico ES8311 audio and its speaker route
+3d3e266 usb: enable Mosaico manual OTG roles and HID input
 ```
 
 ## application
@@ -70,13 +72,13 @@ aeecae6 dmaengine: add ESP32-S31 AHB cyclic peripheral channels
 Base: `peripheral`.
 
 ```text
-172c4a4 applications: add a reconnecting V4L2 camera preview
-9f20d88 buildroot: package the manual Mosaico camera preview
-1025def applications: pin LVGL as a source submodule
-b5c8543 applications: allow embedding the camera preview in a launcher
-cf6c546 applications: add an on-demand LVGL peripheral test launcher
-e559ce3 buildroot: package the manual Mosaico peripheral test launcher
-4de2d0a applications: add reproducible LVGL interface examples
+b924a2b applications: add a reconnecting V4L2 camera preview
+20c6f0a buildroot: package the manual Mosaico camera preview
+5fcecdb applications: pin LVGL as a source submodule
+4b9a4ee applications: allow embedding the camera preview in a launcher
+408d57b applications: add an on-demand LVGL peripheral test launcher
+c4db4a2 buildroot: package the manual Mosaico peripheral test launcher
+5cad560 applications: add reproducible LVGL interface examples
 ```
 
 ## Review and verification
