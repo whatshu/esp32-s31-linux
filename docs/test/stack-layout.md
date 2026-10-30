@@ -18,10 +18,11 @@ submodules; kernel overlays and integration patches stay in `linux/`.
 Full source trees, private captures and helper scripts remain ignored in
 `build/`, `vendor/` and `logs/`.
 
-The published application series includes the manually started camera
-preview with hotplug recovery. Later local commits add an LVGL peripheral
-test interface; its combined camera validation is still pending. See
-[lvgl-validation.md](lvgl-validation.md) for the exact revision and status.
+The application series includes the manually started camera preview with
+hotplug recovery and the LVGL peripheral test interface. Both are stopped
+at boot. The full LVGL image's native USB programming and board checks are
+recorded in [lvgl-validation.md](lvgl-validation.md), including exact source
+revision, physical touch confirmation and remaining validation limits.
 
 ## bsp
 
@@ -70,6 +71,10 @@ Base: `peripheral`.
 07ea4dc applications: add a reconnecting V4L2 camera preview
 3135718 buildroot: package the manual Mosaico camera preview
 1d95296 applications: convert camera frames in small RGB tiles
+7c07574 applications: pin LVGL as a source submodule
+61b46b9 applications: allow embedding the camera preview in a launcher
+5d1353c applications: add an on-demand LVGL peripheral test launcher
+166cd8a buildroot: package the manual Mosaico peripheral test launcher
 ```
 
 ## Review and verification
